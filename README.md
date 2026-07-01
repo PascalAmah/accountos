@@ -1,98 +1,258 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# AccountOS
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+**Programmable, stateful virtual account infrastructure built on Nomba.**
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+AccountOS is a NestJS service that turns Nomba's static virtual accounts into intelligent, rule-driven, auditable financial infrastructure. Built for the Nomba × DevCareer Hackathon — Infrastructure Track.
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## What it does
 
-## Project setup
+Nomba gives you a virtual account. AccountOS gives it a brain.
+
+Four capabilities layered on top of Nomba's DVA primitive:
+
+- **Identity Layer** — Customer entities with KYC tiers (TIER_0–TIER_3), BVN references, parent-child hierarchies, and append-only name history. Every ledger entry carries a customer name snapshot so historical records never change meaning.
+- **Rules Engine** — Attach declarative JSON rules to any account. Triggers (`INFLOW_RECEIVED`, `TIME_ELAPSED`, `CUSTOM_EVENT`, `TIER_CHANGED`), conditions, and actions (`SUSPEND_ACCOUNT`, `RELEASE_FUNDS`, `NOTIFY_WEBHOOK`, etc.) validated by Zod at write time — never at execution time.
+- **Persistent State + Audit** — Immutable ledger, rule execution tracking with retry queue, and an insert-only audit log of every lifecycle event.
+- **Treasury Layer** — Businesses provision treasury bucket DVAs (Payroll, Tax Reserve, Savings, etc.) and split incoming customer payments across them automatically via percentage-based `RELEASE_FUNDS` rules. Withdraw to external bank accounts on demand.
+
+---
+
+## Use cases
+
+**Ajo/Esusu rotating savings** — Each member gets a dedicated DVA. Rules auto-suspend on contribution receipt, notify the admin when the full pot lands, and trigger payout at cycle end.
+
+**Marketplace escrow** — Funds held in a DVA, released on `delivery_confirmed` custom event or after 7 days with no dispute. Same rule engine, different rule set.
+
+**Rent collection** — One DVA per tenant under a shared landlord customer. Underpayment fires a webhook; 35 days with no inflow escalates automatically.
+
+**Treasury allocation** — School, ajo group, or marketplace splits every inflow: 60% → Payroll bucket, 25% → Tax Reserve, 15% → Savings. Each bucket is a real Nomba NUBAN. No master-account hop.
+
+---
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Framework | NestJS 10 + TypeScript |
+| Database | PostgreSQL via Prisma |
+| Queue | BullMQ + Redis |
+| Validation | Zod (`rule-schema.ts`) |
+| API docs | `@nestjs/swagger` (OpenAPI) |
+| Logging | nestjs-pino |
+
+---
+
+## Getting started
+
+### Prerequisites
+- Node.js 20+
+- pnpm
+- PostgreSQL
+- Redis
+- Docker (optional)
+
+### Install
 
 ```bash
-$ pnpm install
+pnpm install
 ```
 
-## Compile and run the project
+### Configure
+
+Copy `.env.example` to `.env` and fill in the values:
+
+```bash
+cp .env.example .env
+```
+
+Key variables:
+
+```env
+DATABASE_URL=postgresql://accountos:accountos@localhost:5432/accountos
+REDIS_URL=redis://localhost:6379
+ADMIN_SECRET=change-me-in-prod
+NOMBA_MOCK_MODE=true        # set false for live Nomba API
+DEMO_MODE_ENABLED=true
+PORT=3000
+```
+
+### Database setup
+
+```bash
+pnpm prisma migrate deploy
+pnpm prisma generate
+```
+
+### Run with Docker
+
+```bash
+docker-compose up
+```
+
+### Run locally
 
 ```bash
 # development
-$ pnpm run start
+pnpm run start:dev
 
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+# production
+pnpm run start:prod
 ```
 
-## Run tests
+---
+
+## Quick start (mock mode)
+
+With `NOMBA_MOCK_MODE=true`, no Nomba credentials are needed. The full pipeline runs with fixture responses.
+
+**1. Register a business**
+```bash
+curl -X POST http://localhost:3000/api/v1/businesses \
+  -H "x-admin-secret: change-me-in-prod" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "AjoApp Ltd", "email": "dev@ajoapp.ng" }'
+```
+
+**2. Generate an API key**
+```bash
+curl -X POST http://localhost:3000/api/v1/api-keys \
+  -H "x-admin-secret: change-me-in-prod" \
+  -H "Content-Type: application/json" \
+  -d '{ "businessId": "<businessId>", "name": "Dev Key" }'
+# Key shown once — save it
+```
+
+**3. Provision a virtual account with rules**
+```bash
+curl -X POST http://localhost:3000/api/v1/accounts \
+  -H "x-api-key: <your-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "accountRef": "ajo-amaka-jan",
+    "customerId": "<customerId>",
+    "executionModel": "SEQUENTIAL",
+    "rules": [
+      {
+        "trigger": "inflow_received",
+        "condition": { "amount_gte": 5000000 },
+        "action": "suspend_account",
+        "priority": 0
+      }
+    ]
+  }'
+```
+
+**4. Simulate an inflow**
+```bash
+curl -X POST http://localhost:3000/api/v1/demo/simulate-inflow \
+  -H "x-admin-secret: change-me-in-prod" \
+  -H "Content-Type: application/json" \
+  -d '{ "accountRef": "ajo-amaka-jan", "amountKobo": 5000000 }'
+```
+
+Swagger docs available at `http://localhost:3000/api/docs`.
+
+---
+
+## Mock → production graduation
+
+1. Register business (no credentials needed at this step)
+2. Build and test with `NOMBA_MOCK_MODE=true`
+3. Update credentials when ready:
+   ```bash
+   curl -X PATCH http://localhost:3000/api/v1/businesses/<id>/credentials \
+     -H "x-admin-secret: change-me-in-prod" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "nombaAccountId": "...",
+       "nombaClientId": "...",
+       "nombaClientSecret": "...",
+       "nombaWebhookSecret": "..."
+     }'
+   ```
+4. Set `NOMBA_MOCK_MODE=false` — live Nomba calls now use the business's stored credentials
+
+---
+
+## API overview
+
+All endpoints are under `/api/v1`. Auth via `x-api-key` header. Admin routes use `x-admin-secret`.
+
+Amounts are always in **kobo** (integer). ₦50,000 = `5000000`.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/businesses` | Register a business tenant |
+| `PATCH` | `/businesses/:id/credentials` | Update Nomba credentials |
+| `POST` | `/api-keys` | Generate an API key (shown once) |
+| `POST` | `/customers` | Create a customer identity |
+| `PATCH` | `/customers/:id/kyc-tier` | Update KYC tier |
+| `POST` | `/accounts` | Provision DVA + attach rules |
+| `GET` | `/accounts/:ref/state` | Account state + rule summary |
+| `PUT` | `/accounts/:ref/rules` | Replace rule set |
+| `POST` | `/accounts/:ref/events` | Fire a custom event (escrow, disputes) |
+| `GET` | `/accounts/:ref/ledger` | Immutable inflow ledger |
+| `GET` | `/accounts/:ref/audit` | Full audit trail |
+| `POST` | `/treasury-buckets` | Provision a treasury bucket DVA |
+| `GET` | `/treasury-buckets/:ref/balance` | Ledger-computed balance |
+| `POST` | `/treasury-buckets/:ref/withdraw` | Withdraw to external bank account |
+| `POST` | `/webhooks/nomba` | Nomba inflow webhook intake (HMAC-verified) |
+| `POST` | `/demo/simulate-inflow` | Simulate inflow (mock mode only) |
+| `GET` | `/health` | Health check |
+
+Full spec in [`technical-docs/API_SPEC.md`](./technical-docs/API_SPEC.md).
+
+---
+
+## Architecture
+
+```
+Nomba API / Business Backends
+         │
+         ▼
+   AccountOS (NestJS)
+   ├── Webhook intake (HMAC verify → BullMQ → async processing)
+   ├── Rules Engine (Zod-validated, SEQUENTIAL or PARALLEL)
+   ├── Ledger Service (append-only)
+   ├── Audit Service (insert-only)
+   └── Treasury Service (two-tier DVA flow, atomic withdrawal)
+         │
+    ┌────┴────┐
+ PostgreSQL  Redis
+```
+
+Each business's Nomba credentials are stored isolated per tenant. AccountOS is the orchestrator — it never holds or pools funds. Full architecture in [`technical-docs/ARCHITECTURE.md`](./technical-docs/ARCHITECTURE.md).
+
+---
+
+## Edge cases handled
+
+| ID | Scenario | Behaviour |
+|---|---|---|
+| EC-01 | Account rename mid-lifecycle | Append-only name history; ledger snapshots unchanged |
+| EC-02 | Close with pending rule executions | All pending executions archived with reason |
+| EC-03 | KYC tier change mid-lifecycle | Stale rules flagged for review; no silent failures |
+| EC-04 | Duplicate webhook delivery | Idempotency check before any rule evaluation |
+| EC-05 | Conflicting rules on same trigger | Deterministic: SEQUENTIAL stops on first match; PARALLEL fires all |
+| EC-06 | Nomba API failure during rule action | BullMQ retry with exponential backoff; max 5 attempts |
+| EC-07 | Treasury withdrawal insufficient balance | 422 before any Nomba call; ledger integrity preserved |
+| EC-08 | RELEASE_FUNDS percentages exceed 100% | Rejected at write time with `400 INVALID_RULE_SET` |
+| EC-09 | Unexpected treasury inflow | Treated as standard inflow; ledger reconciliation maintained |
+
+---
+
+## Tests
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+pnpm run test          # unit tests
+pnpm run test:e2e      # e2e tests
+pnpm run test:cov      # coverage
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+---
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+MIT
