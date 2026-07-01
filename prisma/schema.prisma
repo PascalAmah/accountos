@@ -1,0 +1,426 @@
+// AccountOS — Database Schema (Prisma)
+// Version: 1.0 — complete, all models included
+//
+// Design contracts:
+//   - LedgerEntry and AuditLogEntry are INSERT-ONLY. No UPDATE or DELETE paths exist at app layer.
+//   - Every FK on financial history uses onDelete: Restrict — records never silently cascade-delete.
+//   - Name and KYC tier are snapshotted at time-of-event. Historical records never change meaning.
+//   - All monetary amounts are BigInt in KOBO (₦1 = 100 kobo). Never Decimal, never Float.
+//   - Every Customer, Account, ApiKey scopes to a Business (tenancy). Cross-business data access impossible.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AccountType {
+  CUSTOMER_ACCOUNT   // default — a DVA provisioned for a Customer
+  TREASURY_BUCKET    // a DVA provisioned for a treasury purpose
+}
+
+enum BucketType {
+  PAYROLL
+  TAX_RESERVE
+  OPERATIONS
+  MARKETING
+  SAVINGS
+  CUSTOM
+}
+
+enum KycTier {
+  TIER_0 // Unverified — no BVN, lowest limits
+  TIER_1 // Basic BVN-linked
+  TIER_2 // Enhanced KYC
+  TIER_3 // Full KYC
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CLOSED
+}
+
+enum ExecutionModel {
+  SEQUENTIAL // stop on first matching rule (ordered by priority ASC)
+  PARALLEL   // all matching rules fire (ordered by priority ASC)
+}
+
+enum RuleTrigger {
+  INFLOW_RECEIVED
+  TIME_ELAPSED
+  TIER_CHANGED
+  CUSTOM_EVENT
+}
+
+enum RuleAction {
+  SUSPEND_ACCOUNT
+  REACTIVATE_ACCOUNT // cyclic flows: SUSPENDED → ACTIVE (e.g. ajo monthly reset)
+  EXPIRE_ACCOUNT
+  NOTIFY_WEBHOOK
+  RELEASE_FUNDS      // transfers to destinationAccountRef via Nomba API
+  FLAG_FOR_REVIEW
+}
+
+enum RuleStatus {
+  ACTIVE
+  ARCHIVED           // permanently inactive
+  FLAGGED_FOR_REVIEW // KYC tier changed — awaiting explicit developer re-enable (EC-03)
+}
+
+enum RuleArchivedReason {
+  CLOSED_BEFORE_COMPLETION // account closed with pending execution (EC-02)
+  SUPERSEDED_BY_UPDATE     // PUT /accounts/:ref/rules replaced this rule
+  MANUALLY_ARCHIVED        // explicit archive via API
+}
+
+enum RuleExecutionStatus {
+  PENDING   // action not yet attempted
+  COMPLETED // Nomba API call succeeded
+  FAILED    // exhausted all retry attempts (EC-06)
+  RETRYING  // in BullMQ retry queue (EC-06)
+  ARCHIVED  // account closed before execution could complete (EC-02)
+}
+
+enum LedgerDirection {
+  INFLOW
+  OUTFLOW
+}
+
+enum ReconciliationStatus {
+  PENDING   // ledger entry written, rules not yet evaluated
+  MATCHED   // inflow matched to at least one rule execution
+  UNMATCHED // no rules matched (unexpected payment)
+  FLAGGED   // anomaly detected (e.g. payment to suspended account)
+}
+
+enum AuditAction {
+  // Business
+  BUSINESS_CREATED
+  // API Keys
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  // Customer
+  CUSTOMER_CREATED
+  CUSTOMER_RENAMED               // EC-01
+  KYC_TIER_CHANGED               // EC-03
+  // Account
+  ACCOUNT_CREATED
+  ACCOUNT_SUSPENDED
+  ACCOUNT_REACTIVATED            // cyclic reset — SUSPENDED → ACTIVE
+  ACCOUNT_EXPIRED
+  ACCOUNT_CLOSED                 // EC-02
+  ACCOUNT_STATUS_OVERRIDE        // manual PATCH /accounts/:ref/status
+  // Rules
+  RULES_UPDATED
+  RULE_FLAGGED_KYC_CHANGE        // EC-03
+  RULE_ARCHIVED                  // EC-02
+  // Executions
+  RULE_ACTION_COMPLETED          // EC-06
+  RULE_ACTION_FAILED             // EC-06
+  // Ledger / Events
+  INFLOW_RECEIVED
+  CUSTOM_EVENT_PROCESSED
+  DUPLICATE_EVENT_DISCARDED      // EC-04
+  UNKNOWN_ACCOUNT_WEBHOOK
+  // Treasury
+  TREASURY_BUCKET_CREATED
+  TREASURY_BUCKET_CLOSED
+  TREASURY_WITHDRAWAL_INITIATED
+  TREASURY_WITHDRAWAL_COMPLETED
+  TREASURY_WITHDRAWAL_FAILED
+  ALLOCATE_FUNDS
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Business (Tenant)
+// Every resource belongs to a Business. Enforces data isolation between customers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Business {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  webhookUrl  String?  // default outbound notification URL for this business
+
+  // Nomba credentials — per business, used by NombaClientService for all Nomba API calls
+  // Each business must have their own Nomba account. AccountOS never pools funds.
+  nombaAccountId      String?  // Nomba parent accountId (sent as accountId header on every Nomba call)
+  nombaSubAccountId   String?  // Nomba sub-account ID — scopes virtual account creation and fund collection
+  nombaClientId       String?  // Nomba OAuth2 client ID
+  nombaClientSecret   String?  // Nomba OAuth2 client secret — encrypt at rest in production
+  nombaWebhookSecret  String?  // HMAC secret for verifying inbound Nomba webhooks
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys     ApiKey[]
+  customers   Customer[]
+  accounts    Account[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API Keys
+// Generated by AccountOS, owned by a Business, used to authenticate all API calls.
+// Raw key is shown exactly once on creation and never stored — only SHA-256 hash stored.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  keyHash    String    @unique  // SHA-256(rawKey) — never store raw
+  keyPrefix  String             // first 12 chars e.g. "ako_live_a3f" — for display only
+  name       String             // human label e.g. "AjoApp Production"
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([keyHash])   // primary lookup on every request
+  @@index([businessId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id          String   @id @default(cuid())
+  displayName String
+  kycTier     KycTier  @default(TIER_0)
+  bvnRef      String?  // SHA-256 hash of BVN — never store raw BVN
+  email       String?
+  phone       String?
+
+  kycVerificationProvider String?  // e.g. "Dojah", "Prembly", "Smile ID"
+  kycVerificationRef      String?  // provider's verification reference ID
+
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  // Self-relation: landlord (parent) → tenants (children) (PRD §7.3)
+  parentId    String?
+  parent      Customer?  @relation("CustomerHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Customer[] @relation("CustomerHierarchy")
+
+  accounts    Account[]
+  nameHistory NameHistoryEntry[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([kycTier])
+}
+
+// Append-only. A rename ALWAYS writes one of these before updating Customer.displayName.
+model NameHistoryEntry {
+  id           String   @id @default(cuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  previousName String
+  newName      String
+  reason       String?
+  changedBy    String   // actor: API key prefix or "system"
+  changedAt    DateTime @default(now())
+
+  @@index([customerId, changedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Account {
+  id             String         @id @default(cuid())
+  accountRef     String         @unique // developer-supplied; also passed to Nomba
+  nombaAccountId String         @unique // Nomba's internal ID (for suspend/expire calls)
+  accountNumber  String                  // NUBAN shown to payers
+  bankName       String
+  status         AccountStatus  @default(ACTIVE)
+  executionModel ExecutionModel @default(SEQUENTIAL)
+
+  // Immutable snapshot — never update after creation
+  accountNameAtCreation String
+
+  // Treasury-specific fields
+  accountType    AccountType    @default(CUSTOMER_ACCOUNT)
+  bucketType     BucketType?    // only set for TREASURY_BUCKET accounts
+  description    String?        // optional human description for treasury buckets
+
+  // Make customerId nullable for treasury buckets (owned by business, not customer)
+  customerId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // Direct businessId foreign key for easier scoping queries
+  businessId     String
+  business       Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  rules          Rule[]
+  ledgerEntries  LedgerEntry[]
+  auditLog       AuditLogEntry[]
+  ruleExecutions RuleExecution[]
+
+  closedAt       DateTime?
+  closedReason   String?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([customerId])
+  @@index([businessId])
+  @@index([accountType])
+  @@index([status])
+  @@index([accountNumber]) // webhook processor lookup
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rules
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Rule {
+  id        String     @id @default(cuid())
+  accountId String
+  account   Account    @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  trigger           RuleTrigger
+  condition         Json        // validated against rule-schema.ts before write
+  action            RuleAction
+  payload           Json?
+
+  priority          Int         @default(0)
+  status            RuleStatus  @default(ACTIVE)
+  kycTierAtCreation KycTier     // snapshot for EC-03
+
+  archivedAt        DateTime?
+  archivedReason    RuleArchivedReason?
+
+  executions RuleExecution[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+  @@index([accountId, trigger])
+  @@index([accountId, priority])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rule Executions
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RuleExecution {
+  id        String              @id @default(cuid())
+  ruleId    String
+  rule      Rule                @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  accountId String
+  account   Account             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  triggeredByLedgerEntryId String?
+  triggeredByLedgerEntry   LedgerEntry? @relation(fields: [triggeredByLedgerEntryId], references: [id], onDelete: SetNull)
+
+  triggeredBy      String               // nombaEventId, businessEventId, or "scheduler"
+  status           RuleExecutionStatus  @default(PENDING)
+  attempt          Int                  @default(0)
+  nextRetryAt      DateTime?
+  nombaApiResponse Json?
+  errorMessage     String?
+  archivedReason   RuleArchivedReason?
+
+  executedAt  DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([accountId, status])
+  @@index([status, nextRetryAt])
+  @@index([ruleId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ledger (IMMUTABLE — insert only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LedgerEntry {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  nombaTransactionRef String           @unique
+  nombaEventId        String
+  direction           LedgerDirection
+  amountKobo          BigInt           // KOBO — ₦50,000 = 5,000,000. NEVER Decimal/Float.
+  currency            String           @default("NGN")
+
+  senderName          String?
+  senderAccountNumber String?
+  senderBankCode      String?
+  narration           String?
+
+  // Immutable snapshots (EC-01, EC-03)
+  customerNameSnapshot String
+  kycTierAtTime        KycTier
+
+  // Running total at time of this entry — avoids re-aggregating for cumulative conditions
+  cumulativeAmountKobo BigInt
+
+  reconciliationStatus ReconciliationStatus @default(PENDING)
+  ruleExecutions       RuleExecution[]
+
+  receivedAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([accountId, reconciliationStatus])
+  @@index([nombaTransactionRef])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Idempotency store (EC-04)
+// Written LAST after full successful processing — see ARCHITECTURE.md §3.1 step 12
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProcessedEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique // nombaEventId or business eventId
+  eventType   String           // "NOMBA_INFLOW" or custom event name
+  accountRef  String?
+  businessId  String?          // scoped to business for safety
+  payload     Json
+  processedAt DateTime @default(now())
+
+  @@index([eventType, processedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit Log (IMMUTABLE — insert only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLogEntry {
+  id         String   @id @default(cuid())
+  accountId  String?
+  account    Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  customerId String?
+  businessId String?
+
+  actor       String      // API key prefix, "system", or "nomba_webhook"
+  action      AuditAction
+  beforeState Json?
+  afterState  Json?
+  reasonCode  String?
+  metadata    Json?
+  requestId   String?     // correlates to Pino request log
+
+  occurredAt DateTime @default(now())
+
+  @@index([accountId, occurredAt])
+  @@index([customerId, occurredAt])
+  @@index([businessId, occurredAt])
+  @@index([action, occurredAt])
+}

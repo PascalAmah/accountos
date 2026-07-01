@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AccountOS — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+  <style>
+    :root {
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --border-radius-lg: 10px;
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f6f8fa;
+      --color-background-tertiary: #f0f2f5;
+      --color-text-primary: #0d1117;
+      --color-text-secondary: #424a53;
+      --color-text-tertiary: #6e7781;
+      --color-border-tertiary: #d0d7de;
+      --color-border-secondary: #b1bac4;
+      --ink: #0D1117; --circuit: #6EE7C7; --vault: #0F6E56;
+      --slate: #1E2D3D; --mint-bg: #EAF3DE; --naira-bg: #FAEEDA; --sidebar-w: 200px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #f0f2f5; font-family: var(--font-sans); }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    /* ── Config bar ─────────────────────────────────────────────────── */
+    .cfg-bar {
+      background: #0D1117; border-bottom: 1px solid #1E2D3D;
+      padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: rgba(255,255,255,0.5);
+    }
+    .cfg-bar label { color: #6EE7C7; font-weight: 500; white-space: nowrap; }
+    .cfg-input {
+      background: rgba(255,255,255,0.06); border: 0.5px solid rgba(110,231,199,0.25);
+      border-radius: 5px; padding: 4px 10px; font-size: 11px; color: #fff;
+      font-family: var(--font-mono); flex: 1; max-width: 280px;
+    }
+    .cfg-input:focus { outline: none; border-color: #6EE7C7; }
+    .cfg-btn {
+      background: #0F6E56; color: #fff; border: none; border-radius: 5px;
+      padding: 4px 12px; font-size: 11px; cursor: pointer; font-family: var(--font-sans); font-weight: 500;
+    }
+    .cfg-status { font-size: 10px; display: flex; align-items: center; gap: 5px; }
+    .cfg-dot { width: 6px; height: 6px; border-radius: 50%; background: #5F5E5A; }
+    .cfg-dot.ok { background: #97C459; }
+    .cfg-dot.err { background: #EF4444; }
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    .aos-wrap { display: flex; height: calc(100vh - 37px); background: var(--color-background-primary); }
+    .aos-sidebar {
+      width: var(--sidebar-w); background: #0D1117;
+      display: flex; flex-direction: column; flex-shrink: 0; padding: 0 0 16px;
+    }
+    .aos-logo { display: flex; align-items: center; gap: 10px; padding: 18px 16px; border-bottom: 0.5px solid rgba(255,255,255,0.07); margin-bottom: 8px; }
+    .aos-logo-text { font-size: 15px; font-weight: 500; color: #fff; letter-spacing: -0.02em; }
+    .aos-logo-sub { font-size: 9px; color: #6EE7C7; letter-spacing: 0.07em; margin-top: 1px; }
+    .aos-nav-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.25); padding: 8px 16px 4px; font-weight: 500; }
+    .aos-nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; font-size: 13px; color: rgba(255,255,255,0.55); cursor: pointer; transition: background 0.1s; border-left: 2px solid transparent; }
+    .aos-nav-item:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.85); }
+    .aos-nav-item.active { background: rgba(110,231,199,0.08); color: #6EE7C7; border-left-color: #6EE7C7; }
+    .aos-nav-item i { font-size: 15px; }
+    .live-indicator { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 3px; background: rgba(110,231,199,0.15); color: #6EE7C7; margin-left: auto; }
+    .live-indicator.mock { background: rgba(239,159,39,0.15); color: #EF9F27; }
+    .aos-env { margin: auto 16px 0; background: rgba(15,110,86,0.2); border: 0.5px solid rgba(110,231,199,0.25); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6EE7C7; font-weight: 500; }
+    .env-dot { width: 6px; height: 6px; border-radius: 50%; background: #6EE7C7; }
+    .aos-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--color-background-tertiary); }
+    .aos-topbar { background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 0 20px; height: 48px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .aos-topbar-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+    .aos-search { display: flex; align-items: center; gap: 6px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 6px; padding: 5px 10px; font-size: 12px; color: var(--color-text-tertiary); width: 180px; }
+    .aos-avatar { width: 28px; height: 28px; border-radius: 50%; background: #0F6E56; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; color: #fff; }
+    .aos-content { flex: 1; overflow-y: auto; padding: 20px; }
+    .screen { display: none; } .screen.active { display: block; }
+    /* ── Cards & metrics ─────────────────────────────────────────────── */
+    .metric-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+    .metric-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 14px 16px; }
+    .metric-label { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 6px; letter-spacing: 0.03em; }
+    .metric-val { font-size: 22px; font-weight: 500; color: var(--color-text-primary); letter-spacing: -0.02em; line-height: 1; }
+    .metric-sub { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+    .metric-up { color: #3B6D11; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 16px; }
+    .card-label { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-tertiary); margin-bottom: 10px; }
+    .feed-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .feed-text { font-size: 12px; color: var(--color-text-primary); line-height: 1.4; }
+    .feed-time { font-size: 10px; color: var(--color-text-tertiary); margin-top: 2px; }
+    .badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.04em; }
+    .badge-active { background: #EAF3DE; color: #3B6D11; }
+    .badge-suspended { background: #FAEEDA; color: #854F0B; }
+    .badge-closed { background: #FCEBEB; color: #A32D2D; }
+    .badge-flagged { background: #EEEDFE; color: #3C3489; }
+    .badge-t0 { background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary); }
+    .badge-t1 { background: #EAF3DE; color: #3B6D11; }
+    .badge-t2 { background: #E6F1FB; color: #185FA5; }
+    .badge-t3 { background: #EEEDFE; color: #3C3489; }
+    .tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .tbl th { text-align: left; font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-tertiary); padding: 6px 8px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+    .tbl td { padding: 9px 8px; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-primary); vertical-align: middle; }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td { background: var(--color-background-secondary); }
+    .tbl-mono { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); }
+    .btn-primary { background: #0F6E56; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 5px; }
+    .btn-secondary { background: transparent; color: var(--color-text-primary); border: 0.5px solid var(--color-border-secondary); border-radius: 6px; padding: 7px 14px; font-size: 12px; cursor: pointer; font-family: var(--font-sans); }
+    .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* ── Rules builder ───────────────────────────────────────────────── */
+    .rule-card { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; margin-bottom: 10px; }
+    .rule-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--color-background-secondary); border-bottom: 0.5px solid var(--color-border-tertiary); font-size: 12px; }
+    .rule-tag { font-size: 10px; font-weight: 500; letter-spacing: 0.07em; padding: 2px 7px; border-radius: 4px; }
+    .rule-when { background: #E6F1FB; color: #185FA5; } .rule-then { background: #EAF3DE; color: #3B6D11; }
+    .rule-body { padding: 12px 14px; background: var(--color-background-primary); }
+    .rule-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .rule-row:last-child { margin-bottom: 0; }
+    .rule-select { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 5px; padding: 5px 9px; font-size: 12px; color: var(--color-text-primary); font-family: var(--font-sans); }
+    .rule-val { background: var(--color-background-secondary); border: 0.5px solid #6EE7C7; border-radius: 5px; padding: 5px 9px; font-size: 12px; color: var(--color-text-primary); font-weight: 500; font-family: var(--font-mono); width: 120px; }
+    .op-tag { font-size: 11px; font-weight: 500; background: #0D1117; color: #6EE7C7; border-radius: 4px; padding: 3px 7px; font-family: var(--font-mono); }
+    .action-card { background: rgba(15,110,86,0.06); border: 0.5px solid rgba(15,110,86,0.25); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #0F6E56; font-weight: 500; }
+    /* ── Audit timeline ──────────────────────────────────────────────── */
+    .timeline-item { display: flex; gap: 12px; margin-bottom: 4px; }
+    .timeline-line-wrap { display: flex; flex-direction: column; align-items: center; }
+    .tl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+    .tl-line { width: 1px; background: var(--color-border-tertiary); flex: 1; margin-top: 4px; min-height: 24px; }
+    .timeline-content { padding-bottom: 16px; }
+    .tl-action { font-size: 12px; font-weight: 500; color: var(--color-text-primary); }
+    .tl-meta { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+    .tl-code { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 5px; padding: 6px 10px; font-size: 11px; font-family: var(--font-mono); color: var(--color-text-secondary); margin-top: 6px; display: inline-block; }
+    /* ── Demo / console ──────────────────────────────────────────────── */
+    .demo-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 18px; margin-bottom: 10px; }
+    .demo-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 6px; }
+    .demo-desc { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; margin-bottom: 14px; }
+    .console-wrap { background: #0D1117; border-radius: 8px; padding: 14px 16px; font-family: var(--font-mono); font-size: 11px; line-height: 1.9; border: 0.5px solid #1E2D3D; margin-top: 12px; }
+    .console-label { font-family: var(--font-sans); font-size: 10px; color: #5F5E5A; letter-spacing: 0.07em; margin-bottom: 8px; }
+    .c-dim{color:#5F5E5A;} .c-key{color:#6EE7C7;} .c-val{color:#FAEEDA;} .c-num{color:#97C459;}
+    .c-info{color:#6EE7C7;} .c-ok{color:#97C459;} .c-warn{color:#EF9F27;} .c-err{color:#EF4444;}
+    .console-line { display: flex; align-items: flex-start; gap: 8px; }
+    .c-ts { color: #3B6D11; font-size: 10px; min-width: 56px; }
+    /* ── Misc ────────────────────────────────────────────────────────── */
+    .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .page-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+    .page-sub { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+    .exec-bar { display: flex; height: 8px; border-radius: 20px; overflow: hidden; gap: 2px; margin-top: 8px; }
+    .exec-seg { border-radius: 2px; }
+    .priority-badge { font-size: 10px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 4px; padding: 2px 6px; color: var(--color-text-tertiary); }
+    .toggle-pill { display: inline-flex; background: var(--color-background-secondary); border-radius: 20px; border: 0.5px solid var(--color-border-tertiary); overflow: hidden; font-size: 11px; }
+    .toggle-opt { padding: 4px 12px; cursor: pointer; color: var(--color-text-tertiary); }
+    .toggle-opt.on { background: #0F6E56; color: #fff; border-radius: 20px; }
+    .live-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; color: #3B6D11; background: #EAF3DE; border-radius: 20px; padding: 2px 8px; }
+    .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #3B6D11; }
+    .sc-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+    .sc-row:last-child { border-bottom: none; }
+    .sc-label { font-size: 12px; color: var(--color-text-secondary); } .sc-val { font-size: 12px; color: var(--color-text-primary); font-weight: 500; }
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+    .filter-chip { font-size: 11px; padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); color: var(--color-text-secondary); cursor: pointer; background: var(--color-background-primary); }
+    .filter-chip.on { background: #0D1117; color: #6EE7C7; border-color: #0D1117; }
+    .not-live-banner { background: #FAEEDA; border: 0.5px solid #EF9F27; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #854F0B; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(15,110,86,0.2); border-top-color: #0F6E56; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .demo-account-select { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 5px; padding: 5px 9px; font-size: 12px; color: var(--color-text-primary); font-family: var(--font-mono); width: 100%; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Config bar ──────────────────────────────────────────────────────── -->
+<div class="cfg-bar" id="cfg-bar">
+  <div id="cfg-inputs" style="display:flex;align-items:center;gap:10px;flex:1">
+    <label>BASE URL</label>
+    <input class="cfg-input" id="cfg-base" value="http://localhost:3000/api/v1" spellcheck="false"/>
+    <label>API KEY</label>
+    <input class="cfg-input" id="cfg-key" type="text" placeholder="ako_live_…" spellcheck="false" autocomplete="off"/>
+    <button class="cfg-btn" onclick="connectApi()">Connect</button>
+  </div>
+  <div id="cfg-connected" style="display:none;flex:1;align-items:center;gap:10px">
+    <span style="font-size:11px;color:rgba(255,255,255,0.4)">Connected to</span>
+    <span id="cfg-connected-url" style="font-size:11px;font-family:var(--font-mono);color:#6EE7C7"></span>
+    <button onclick="disconnectApi()" style="background:none;border:none;cursor:pointer;font-size:11px;color:rgba(255,255,255,0.35);padding:0;font-family:var(--font-sans)">change</button>
+  </div>
+  <div class="cfg-status"><div class="cfg-dot" id="api-dot"></div><span id="api-status">Not connected</span></div>
+</div>
+
+<h2 class="sr-only">AccountOS — Programmable Virtual Account Infrastructure Dashboard</h2>
+<div class="aos-wrap">
+  <!-- Sidebar -->
+  <nav class="aos-sidebar" aria-label="Main navigation">
+    <div class="aos-logo">
+      <svg width="28" height="28" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+        <circle cx="22" cy="22" r="19" stroke="#6EE7C7" stroke-width="1.5" stroke-dasharray="60 60" stroke-dashoffset="-15" stroke-linecap="round"/>
+        <rect x="11" y="11" width="22" height="22" rx="6" fill="#6EE7C7"/>
+        <path d="M16 22h5v-4" stroke="#0D1117" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M21 18l3 3-3 3" stroke="#0D1117" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      <div><div class="aos-logo-text">AccountOS</div><div class="aos-logo-sub">INFRASTRUCTURE</div></div>
+    </div>
+    <div class="aos-nav-label">Core</div>
+    <div class="aos-nav-item active" onclick="showScreen('dashboard',this)"><i class="ti ti-layout-dashboard"></i> Dashboard</div>
+    <div class="aos-nav-item" onclick="showScreen('customers',this)">
+      <i class="ti ti-users"></i> Customers
+      <span class="live-indicator" id="nav-live-customers" style="display:none">LIVE</span>
+    </div>
+    <div class="aos-nav-item" onclick="showScreen('accounts',this)"><i class="ti ti-wallet"></i> Accounts</div>
+    <div class="aos-nav-item" onclick="showScreen('rules',this)"><i class="ti ti-circuit-switchboard"></i> Rules</div>
+    <div class="aos-nav-label">Finance</div>
+    <div class="aos-nav-item" onclick="showScreen('ledger',this)"><i class="ti ti-report-money"></i> Ledger</div>
+    <div class="aos-nav-item" onclick="showScreen('audit',this)"><i class="ti ti-timeline"></i> Audit Trail</div>
+    <div class="aos-nav-label">Tools</div>
+    <div class="aos-nav-item" onclick="showScreen('demo',this)">
+      <i class="ti ti-player-play"></i> Demo Scenarios
+      <span class="live-indicator" id="nav-live-demo" style="display:none">LIVE</span>
+    </div>
+    <div class="aos-nav-item" onclick="window.location='/brand.html'"><i class="ti ti-palette"></i> Brand</div>
+    <div class="aos-env"><div class="env-dot"></div><span id="env-label">Sandbox</span></div>
+  </nav>
+
+  <!-- Main -->
+  <div class="aos-main">
+    <div class="aos-topbar">
+      <span class="aos-topbar-title" id="topbar-title">Dashboard</span>
+      <div class="aos-search"><i class="ti ti-search"></i> Search accounts, rules…</div>
+      <i class="ti ti-bell" style="font-size:16px;color:var(--color-text-tertiary)" aria-label="Notifications"></i>
+      <div class="aos-avatar">AM</div>
+    </div>
+    <div class="aos-content">
+
+      <!-- SCREEN: Dashboard -->
+      <div class="screen active" id="screen-dashboard">
+        <div class="page-head">
+          <div><div class="page-title">Overview</div><div class="page-sub" id="dash-sub">Last 30 days · Sandbox environment</div></div>
+          <button class="btn-secondary" onclick="refreshDashboard()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+        <div class="metric-grid">
+          <div class="metric-card"><div class="metric-label">Total Customers</div><div class="metric-val" id="m-customers">—</div><div class="metric-sub" id="m-customers-sub">connect API to load</div></div>
+          <div class="metric-card"><div class="metric-label">Active Accounts</div><div class="metric-val" id="m-accounts">—</div><div class="metric-sub">connect API to load</div></div>
+          <div class="metric-card"><div class="metric-label">Active Rules</div><div class="metric-val">142</div><div class="metric-sub">Across 38 templates</div></div>
+          <div class="metric-card"><div class="metric-label">Total Inflows</div><div class="metric-val">₦2.4B</div><div class="metric-sub metric-up">↑ 31% this month</div></div>
+          <div class="metric-card"><div class="metric-label">Triggered Automations</div><div class="metric-val">8,304</div><div class="metric-sub">97.2% success rate</div></div>
+          <div class="metric-card"><div class="metric-label">Audit Events</div><div class="metric-val">24,019</div><div class="metric-sub">Fully immutable</div></div>
+        </div>
+        <div class="two-col">
+          <div class="card"><div class="card-label">Inflows — last 14 days</div><div style="position:relative;height:140px;"><canvas id="inflowChart"></canvas></div></div>
+          <div class="card">
+            <div class="card-label">Recent Activity</div>
+            <div id="activity-feed">
+              <div class="feed-item"><div class="feed-dot" style="background:#3B6D11"></div><div><div class="feed-text">Rule triggered — <strong>Ajo savings target reached</strong></div><div class="feed-time">2 min ago · ako-amaka-jan</div></div></div>
+              <div class="feed-item"><div class="feed-dot" style="background:#185FA5"></div><div><div class="feed-text">Payment received — <strong>₦150,000</strong> from Emeka Obi</div><div class="feed-time">8 min ago · ako-escrow-0042</div></div></div>
+              <div class="feed-item"><div class="feed-dot" style="background:#854F0B"></div><div><div class="feed-text">Account suspended — cumulative limit hit</div><div class="feed-time">23 min ago · ako-school-0019</div></div></div>
+              <div class="feed-item"><div class="feed-dot" style="background:#3C3489"></div><div><div class="feed-text">KYC upgraded — Tier 1 → Tier 2</div><div class="feed-time">1 hr ago · Ngozi Eze</div></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Rule Execution Summary</div>
+          <div style="display:flex;gap:24px;margin-bottom:8px;">
+            <span style="font-size:12px;color:var(--color-text-secondary)"><span style="color:#3B6D11;font-weight:500">8,078</span> succeeded</span>
+            <span style="font-size:12px;color:var(--color-text-secondary)"><span style="color:#854F0B;font-weight:500">184</span> pending</span>
+            <span style="font-size:12px;color:var(--color-text-secondary)"><span style="color:#A32D2D;font-weight:500">42</span> failed</span>
+          </div>
+          <div class="exec-bar">
+            <div class="exec-seg" style="flex:8078;background:#3B6D11"></div>
+            <div class="exec-seg" style="flex:184;background:#EF9F27"></div>
+            <div class="exec-seg" style="flex:42;background:#A32D2D"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: Customers — LIVE -->
+      <div class="screen" id="screen-customers">
+        <div class="page-head">
+          <div>
+            <div class="page-title">Customers</div>
+            <div class="page-sub" id="customers-sub">Connect API to load live data</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-secondary" onclick="loadCustomers()"><i class="ti ti-refresh"></i> Refresh</button>
+            <button class="btn-primary" id="btn-create-customer" onclick="openCreateCustomer()"><i class="ti ti-plus"></i> Create Customer</button>
+          </div>
+        </div>
+        <div id="customers-loading" style="display:none;text-align:center;padding:40px">
+          <div class="spinner"></div>
+          <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading customers…</div>
+        </div>
+        <div id="customers-error" style="display:none" class="not-live-banner">
+          <i class="ti ti-alert-triangle"></i><span id="customers-error-msg"></span>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden" id="customers-table-wrap">
+          <table class="tbl">
+            <thead><tr><th>Customer</th><th>KYC Tier</th><th>Phone</th><th>Email</th><th>Status</th><th>Created</th><th></th></tr></thead>
+            <tbody id="customers-tbody">
+              <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">Connect API above to load live customers</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SCREEN: Accounts — coming in Phase 4 -->
+      <div class="screen" id="screen-accounts">
+        <div class="page-head">
+          <div><div class="page-title">Virtual Accounts</div><div class="page-sub" id="accounts-sub">Connect API to load</div></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-secondary" onclick="loadAccounts()"><i class="ti ti-refresh"></i> Refresh</button>
+            <button class="btn-primary"><i class="ti ti-plus"></i> Provision Account</button>
+          </div>
+        </div>
+        <div id="accounts-not-live" class="not-live-banner">
+          <i class="ti ti-clock"></i> Accounts API is available in Phase 4 of the build. Static demo data shown below.
+        </div>
+        <div class="three-col">
+          <div class="metric-card"><div class="metric-label">Total Inflows</div><div class="metric-val">₦2.4B</div></div>
+          <div class="metric-card"><div class="metric-label">Suspended</div><div class="metric-val" style="color:#854F0B">211</div></div>
+          <div class="metric-card"><div class="metric-label">Rules Bound</div><div class="metric-val">142</div></div>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table class="tbl">
+            <thead><tr><th>Account Ref</th><th>Account No.</th><th>Customer</th><th>Status</th><th>Rules</th><th>Total Inflows</th><th>Created</th></tr></thead>
+            <tbody id="accounts-tbody">
+              <tr><td class="tbl-mono">ajo-amaka-jan</td><td class="tbl-mono">0231887412</td><td style="font-size:12px">Amaka Okonkwo</td><td><span class="badge badge-suspended">SUSPENDED</span></td><td style="font-size:12px;font-weight:500;color:#0F6E56">3</td><td style="font-size:12px">₦500,000</td><td style="color:var(--color-text-tertiary);font-size:11px">Jan 3, 2025</td></tr>
+              <tr><td class="tbl-mono">ako-escrow-0042</td><td class="tbl-mono">0219003456</td><td style="font-size:12px">Emeka Obi</td><td><span class="badge badge-active">ACTIVE</span></td><td style="font-size:12px;font-weight:500;color:#0F6E56">2</td><td style="font-size:12px">₦1.2M</td><td style="color:var(--color-text-tertiary);font-size:11px">Jan 15, 2025</td></tr>
+              <tr><td class="tbl-mono">ako-school-0019</td><td class="tbl-mono">0244781100</td><td style="font-size:12px">Greenfield Acad.</td><td><span class="badge badge-suspended">SUSPENDED</span></td><td style="font-size:12px;font-weight:500;color:#0F6E56">1</td><td style="font-size:12px">₦750,000</td><td style="color:var(--color-text-tertiary);font-size:11px">Feb 10, 2025</td></tr>
+              <tr><td class="tbl-mono">ako-coop-fola-01</td><td class="tbl-mono">0261990023</td><td style="font-size:12px">Fola Adeyemi</td><td><span class="badge badge-active">ACTIVE</span></td><td style="font-size:12px;font-weight:500;color:#0F6E56">0</td><td style="font-size:12px">₦45,000</td><td style="color:var(--color-text-tertiary);font-size:11px">Jun 18, 2025</td></tr>
+              <tr><td class="tbl-mono">ako-mkt-vend-07</td><td class="tbl-mono">0288110345</td><td style="font-size:12px">Chidi Nwosu</td><td><span class="badge badge-flagged">FLAGGED</span></td><td style="font-size:12px;font-weight:500;color:#0F6E56">2</td><td style="font-size:12px">₦890,000</td><td style="color:var(--color-text-tertiary);font-size:11px">Mar 10, 2025</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SCREEN: Rules -->
+      <div class="screen" id="screen-rules">
+        <div class="page-head">
+          <div><div class="page-title">Rule Builder</div><div class="page-sub">Define programmable triggers and actions for virtual accounts</div></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div class="toggle-pill"><div class="toggle-opt on" onclick="setToggle(this)">Sequential</div><div class="toggle-opt" onclick="setToggle(this)">Parallel</div></div>
+            <button class="btn-primary"><i class="ti ti-plus"></i> Add Rule</button>
+          </div>
+        </div>
+        <div class="not-live-banner"><i class="ti ti-clock"></i> Rule management API available in Phase 5. Showing demo rule set for ajo-amaka-jan.</div>
+        <div class="two-col" style="gap:14px;align-items:start">
+          <div>
+            <div class="card-label" style="margin-bottom:10px">Active rules — ajo-amaka-jan</div>
+            <div class="rule-card"><div class="rule-header"><span class="priority-badge">#1</span><span style="font-size:12px;color:var(--color-text-primary);flex:1;font-weight:500">Savings target gate</span><span class="badge badge-active">ACTIVE</span></div><div class="rule-body"><div class="rule-row"><span class="rule-tag rule-when">WHEN</span><select class="rule-select"><option>Cumulative Amount</option><option>Payment Amount</option></select><span class="op-tag">≥</span><input class="rule-val" value="₦500,000"/></div><div class="rule-row" style="margin-top:8px"><span class="rule-tag rule-then">THEN</span><div class="action-card"><i class="ti ti-lock"></i> Suspend Account</div></div></div></div>
+            <div class="rule-card"><div class="rule-header"><span class="priority-badge">#2</span><span style="font-size:12px;color:var(--color-text-primary);flex:1;font-weight:500">High-value alert</span><span class="badge badge-active">ACTIVE</span></div><div class="rule-body"><div class="rule-row"><span class="rule-tag rule-when">WHEN</span><select class="rule-select"><option>Payment Amount</option><option>Cumulative Amount</option></select><span class="op-tag">≥</span><input class="rule-val" value="₦50,000"/></div><div class="rule-row" style="margin-top:8px"><span class="rule-tag rule-then">THEN</span><div class="action-card"><i class="ti ti-webhook"></i> Send Webhook</div></div></div></div>
+            <div class="rule-card"><div class="rule-header"><span class="priority-badge">#3</span><span style="font-size:12px;color:var(--color-text-primary);flex:1;font-weight:500">Audit on any credit</span><span class="badge badge-active">ACTIVE</span></div><div class="rule-body"><div class="rule-row"><span class="rule-tag rule-when">WHEN</span><select class="rule-select"><option>Payment Received</option></select><span class="op-tag">=</span><input class="rule-val" value="Any"/></div><div class="rule-row" style="margin-top:8px"><span class="rule-tag rule-then">THEN</span><div class="action-card"><i class="ti ti-file-text"></i> Create Audit Log</div></div></div></div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="card-label">Live preview</div><div class="live-tag"><div class="live-dot"></div> Simulating</div></div>
+            <div class="card" style="margin-bottom:10px">
+              <div class="card-label" style="margin-bottom:8px">Simulate payment</div>
+              <div class="sc-row"><div class="sc-label">Account</div><div class="sc-val tbl-mono">ajo-amaka-jan</div></div>
+              <div class="sc-row"><div class="sc-label">Amount</div><div class="sc-val">₦150,000</div></div>
+              <div class="sc-row"><div class="sc-label">Cumulative before</div><div class="sc-val">₦350,000</div></div>
+              <div class="sc-row"><div class="sc-label">Cumulative after</div><div class="sc-val" style="color:#0F6E56;font-weight:500">₦500,000 ✓</div></div>
+            </div>
+            <div class="console-wrap">
+              <div class="console-label">RULE EVALUATION LOG</div>
+              <div class="console-line"><span class="c-ts">09:14:32</span><span class="c-dim">→</span><span class="c-key">Rule #1</span><span class="c-dim">eval</span></div>
+              <div class="console-line"><span class="c-ts">09:14:32</span><span class="c-dim">  cumulative</span><span class="c-num">500000</span><span class="c-ok">≥ 500000 ✓</span></div>
+              <div class="console-line"><span class="c-ts">09:14:32</span><span class="c-ok">  MATCH — executing action</span></div>
+              <div class="console-line"><span class="c-ts">09:14:32</span><span class="c-warn">  suspend_account → PENDING</span></div>
+              <div class="console-line"><span class="c-ts">09:14:33</span><span class="c-ok">  account_status = SUSPENDED</span></div>
+              <div class="console-line"><span class="c-ts">09:14:33</span><span class="c-key">Rule #2</span><span class="c-ok">eval amount 150000 ≥ 50000 ✓</span></div>
+              <div class="console-line"><span class="c-ts">09:14:33</span><span class="c-ok">  webhook_sent → 200 OK</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCREEN: Ledger -->
+      <div class="screen" id="screen-ledger">
+        <div class="page-head"><div><div class="page-title">Ledger</div><div class="page-sub">All inflows · Reconciliation view</div></div><button class="btn-secondary"><i class="ti ti-filter"></i> Filter</button></div>
+        <div class="not-live-banner"><i class="ti ti-clock"></i> Ledger API available in Phase 6. Static demo data shown.</div>
+        <div class="three-col">
+          <div class="metric-card"><div class="metric-label">Total Inflows</div><div class="metric-val">₦2.4B</div></div>
+          <div class="metric-card"><div class="metric-label">Matched</div><div class="metric-val" style="color:#3B6D11">18,204</div></div>
+          <div class="metric-card"><div class="metric-label">Unmatched / Flagged</div><div class="metric-val" style="color:#A32D2D">304</div></div>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-chip on" onclick="filterChip(this)">All</div>
+          <div class="filter-chip" onclick="filterChip(this)">Today</div>
+          <div class="filter-chip" onclick="filterChip(this)">This week</div>
+          <div class="filter-chip" onclick="filterChip(this)">Unmatched</div>
+          <div class="filter-chip" onclick="filterChip(this)">Flagged</div>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table class="tbl">
+            <thead><tr><th>Amount</th><th>Sender</th><th>Narration</th><th>Account</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight:500;font-size:12px">₦150,000</td><td style="font-size:12px">Emeka Obi</td><td style="font-size:11px;color:var(--color-text-secondary)">AJO SAVINGS CONTRIBUTION</td><td class="tbl-mono">ako-escrow-0042</td><td><span class="badge badge-active">MATCHED</span></td><td style="font-size:11px;color:var(--color-text-tertiary)">Jun 19 · 09:14</td></tr>
+              <tr><td style="font-weight:500;font-size:12px">₦50,000</td><td style="font-size:12px">Ngozi Eze</td><td style="font-size:11px;color:var(--color-text-secondary)">SCHOOL FEES GREENFIELD TERM 3</td><td class="tbl-mono">ako-school-0019</td><td><span class="badge badge-active">MATCHED</span></td><td style="font-size:11px;color:var(--color-text-tertiary)">Jun 19 · 08:55</td></tr>
+              <tr><td style="font-weight:500;font-size:12px">₦800,000</td><td style="font-size:12px">Fola Adeyemi</td><td style="font-size:11px;color:var(--color-text-secondary)">GOODS PAYMENT REF 88391</td><td class="tbl-mono">ako-mkt-vend-07</td><td><span class="badge badge-flagged">FLAGGED</span></td><td style="font-size:11px;color:var(--color-text-tertiary)">Jun 19 · 08:31</td></tr>
+              <tr><td style="font-weight:500;font-size:12px">₦1,200,000</td><td style="font-size:12px">Chidi Nwosu</td><td style="font-size:11px;color:var(--color-text-secondary)">TRANSFER — NO REF</td><td class="tbl-mono">ako-coop-fola-01</td><td><span class="badge badge-suspended">UNMATCHED</span></td><td style="font-size:11px;color:var(--color-text-tertiary)">Jun 18 · 14:45</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SCREEN: Audit Trail -->
+      <div class="screen" id="screen-audit">
+        <div class="page-head"><div><div class="page-title">Audit Trail</div><div class="page-sub" id="audit-sub">Immutable event log</div></div><button class="btn-secondary"><i class="ti ti-download"></i> Export CSV</button></div>
+        <div class="not-live-banner" id="audit-not-live"><i class="ti ti-clock"></i> Full audit API available in Phase 6. Connect API to load live events.</div>
+        <div class="card" id="audit-timeline">
+          <div class="timeline-item"><div class="timeline-line-wrap"><div class="tl-dot" style="background:#A32D2D"></div><div class="tl-line"></div></div><div class="timeline-content"><div class="tl-action">Account Suspended</div><div class="tl-meta">Jun 19, 2025 · 09:14:33 UTC · Actor: rule-engine · ajo-amaka-jan</div><div class="tl-code">"rulesExecuted": ["savings_target_gate"] · "cumulative": 500000</div></div></div>
+          <div class="timeline-item"><div class="timeline-line-wrap"><div class="tl-dot" style="background:#185FA5"></div><div class="tl-line"></div></div><div class="timeline-content"><div class="tl-action">Payment Received</div><div class="tl-meta">Jun 19, 2025 · 09:14:32 UTC · Actor: nomba-gateway · ajo-amaka-jan</div><div class="tl-code">"amountKobo": 15000000 · "sender": "Emeka Obi"</div></div></div>
+          <div class="timeline-item"><div class="timeline-line-wrap"><div class="tl-dot" style="background:#3C3489"></div><div class="tl-line"></div></div><div class="timeline-content"><div class="tl-action">KYC Upgraded</div><div class="tl-meta">Jun 19, 2025 · 07:30:00 UTC · Actor: ops-team · cust_ngozi_003</div><div class="tl-code">"from": "tier_1" · "to": "tier_2" · "verifiedBy": "Dojah"</div></div></div>
+          <div class="timeline-item"><div class="timeline-line-wrap"><div class="tl-dot" style="background:#3B6D11"></div></div><div class="timeline-content"><div class="tl-action">Customer Created</div><div class="tl-meta">Jun 18, 2025 · 14:58:11 UTC · Actor: api-key:ako_live_a3f8c2</div><div class="tl-code">"customerId": "cust_fola_004" · "name": "Fola Adeyemi" · "kyc": "TIER_0"</div></div></div>
+        </div>
+      </div>
+
+      <!-- SCREEN: Demo Scenarios -->
+      <div class="screen" id="screen-demo">
+        <div class="page-head">
+          <div><div class="page-title">Demo Scenarios</div><div class="page-sub">Interactive simulations of real AccountOS use cases</div></div>
+          <div class="live-tag" id="demo-api-tag" style="display:none"><div class="live-dot"></div> API Connected</div>
+        </div>
+        <div id="demo-not-live" class="not-live-banner">
+          <i class="ti ti-clock"></i> Live demos require Phase 6 (<code>POST /demo/simulate-inflow</code>). Until then, demos run the scripted simulation below.
+        </div>
+        <div class="two-col" style="align-items:start;gap:14px">
+          <div>
+            <!-- Ajo Savings -->
+            <div class="demo-card">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <div style="background:#EAF3DE;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center"><i class="ti ti-coin" style="color:#3B6D11;font-size:16px"></i></div>
+                <div class="demo-title">Ajo Savings Demo</div>
+              </div>
+              <div class="demo-desc">Collect weekly savings contributions. When ₦500,000 target is reached, account auto-suspends to lock funds until collection day.</div>
+              <div id="ajo-live-config" style="display:none;margin-bottom:10px">
+                <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px">Account number to simulate inflow on:</div>
+                <input class="demo-account-select" id="ajo-account-num" placeholder="e.g. 9900000001" />
+                <input class="demo-account-select" id="ajo-amount" placeholder="Amount in kobo (e.g. 15000000 = ₦150,000)" />
+              </div>
+              <button class="btn-primary" onclick="runDemo('ajo')"><i class="ti ti-player-play"></i> Run Demo</button>
+            </div>
+            <!-- Escrow -->
+            <div class="demo-card">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <div style="background:#E6F1FB;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center"><i class="ti ti-shield-check" style="color:#185FA5;font-size:16px"></i></div>
+                <div class="demo-title">Escrow Demo</div>
+              </div>
+              <div class="demo-desc">Buyer pays into escrow. Funds held until delivery confirmed. On confirmation, automatic payout to seller.</div>
+              <div id="escrow-live-config" style="display:none;margin-bottom:10px">
+                <input class="demo-account-select" id="escrow-account-num" placeholder="Account number" />
+                <input class="demo-account-select" id="escrow-amount" placeholder="Amount in kobo" />
+              </div>
+              <button class="btn-primary" onclick="runDemo('escrow')"><i class="ti ti-player-play"></i> Run Demo</button>
+            </div>
+            <!-- School Fees -->
+            <div class="demo-card">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <div style="background:#FAEEDA;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center"><i class="ti ti-school" style="color:#854F0B;font-size:16px"></i></div>
+                <div class="demo-title">School Fees Demo</div>
+              </div>
+              <div class="demo-desc">Student pays fees to dedicated virtual account. Payment auto-reconciles and notifies school bursar in real time.</div>
+              <div id="school-live-config" style="display:none;margin-bottom:10px">
+                <input class="demo-account-select" id="school-account-num" placeholder="Account number" />
+                <input class="demo-account-select" id="school-amount" placeholder="Amount in kobo" />
+              </div>
+              <button class="btn-primary" onclick="runDemo('school')"><i class="ti ti-player-play"></i> Run Demo</button>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div class="card-label">Simulation console</div>
+              <span id="demo-live-tag" class="live-tag" style="display:none"><div class="live-dot"></div> Running</span>
+            </div>
+            <div class="console-wrap" style="min-height:380px" id="demo-console">
+              <div class="console-label">AWAITING DEMO</div>
+              <div class="console-line"><span class="c-dim">Select a scenario to begin simulation…</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end aos-content -->
+  </div><!-- end aos-main -->
+</div><!-- end aos-wrap -->
+
+<!-- ── Customer Detail Modal ──────────────────────────────────────────── -->
+<div id="customer-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:480px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.15)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">Customer Details</div>
+      <button onclick="document.getElementById('customer-detail-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--color-text-tertiary)">✕</button>
+    </div>
+    <div id="customer-detail-body"></div>
+  </div>
+</div>
+
+<!-- ── Create Customer Modal ──────────────────────────────────────────── -->
+<div id="modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.15)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">Create Customer</div>
+      <button onclick="closeCreateCustomer()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--color-text-tertiary)">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Display Name *</label>
+        <input id="cc-name" type="text" placeholder="e.g. Chidera Okafor" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:13px;font-family:var(--font-sans);outline:none"/>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Phone</label>
+        <input id="cc-phone" type="text" placeholder="+2348012345678" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:13px;font-family:var(--font-sans);outline:none"/>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Email</label>
+        <input id="cc-email" type="email" placeholder="customer@example.com" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:13px;font-family:var(--font-sans);outline:none"/>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">BVN Ref <span style="font-weight:400">(optional — if provided, customer starts at KYC Tier 1 instead of Tier 0)</span></label>
+        <input id="cc-bvn" type="text" placeholder="sha256: hash of BVN — never the raw BVN" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--font-mono);outline:none"/>
+      </div>
+      <div id="cc-error" style="display:none;background:#FCEBEB;border:0.5px solid #A32D2D;border-radius:6px;padding:8px 12px;font-size:12px;color:#A32D2D"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button class="btn-secondary" onclick="closeCreateCustomer()">Cancel</button>
+        <button class="btn-primary" id="cc-submit" onclick="submitCreateCustomer()"><i class="ti ti-plus"></i> Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+/* ── State ──────────────────────────────────────────────────────────────── */
+let API_BASE = 'http://localhost:3000/api/v1';
+let API_KEY  = '';
+let API_LIVE = false;   // true once we've gotten a 200 from the server
+let DEMO_READY = false; // true when POST /demo/simulate-inflow is available
+
+/* ── API helpers ──────────────────────────────────────────────────────── */
+async function apiFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', 'x-api-key': API_KEY, ...opts.headers };
+  console.debug('[apiFetch]', path, 'key:', API_KEY ? API_KEY.slice(0,12) + '…' : 'EMPTY');
+  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function adminFetch(path, opts = {}) {
+  const adminSecret = prompt('Enter ADMIN_SECRET:');
+  if (!adminSecret) throw new Error('Admin secret required');
+  const headers = { 'Content-Type': 'application/json', 'x-admin-secret': adminSecret, ...opts.headers };
+  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/* ── Connection ──────────────────────────────────────────────────────── */
+async function connectApi() {
+  API_BASE = document.getElementById('cfg-base').value.replace(/\/$/, '');
+  API_KEY  = document.getElementById('cfg-key').value.trim();
+  const dot    = document.getElementById('api-dot');
+  const status = document.getElementById('api-status');
+  dot.className = 'cfg-dot'; status.textContent = 'Connecting…';
+  try {
+    // Probe health endpoint (public — no api key needed, lives under the global prefix)
+    const res = await fetch(`${API_BASE}/health`);
+    const health = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    dot.className = 'cfg-dot ok';
+    status.textContent = `Connected · ${health.version || 'v?'} · DB:${health.db || '?'}`;
+    API_LIVE = true;
+    // Collapse the config inputs and show connected summary
+    document.getElementById('cfg-inputs').style.display = 'none';
+    const connectedBar = document.getElementById('cfg-connected');
+    connectedBar.style.display = 'flex';
+    document.getElementById('cfg-connected-url').textContent = API_BASE;
+    // Show LIVE badges
+    document.getElementById('nav-live-customers').style.display = 'inline-flex';
+    // Check if demo/simulate-inflow is available
+    checkDemoReady();
+    // Load data
+    loadCustomers();
+    refreshDashboard();
+  } catch(e) {
+    dot.className = 'cfg-dot err';
+    status.textContent = `Error: ${e.message}`;
+    API_LIVE = false;
+  }
+}
+
+function disconnectApi() {
+  API_LIVE = false;
+  API_KEY = '';
+  document.getElementById('cfg-inputs').style.display = 'flex';
+  document.getElementById('cfg-connected').style.display = 'none';
+  document.getElementById('cfg-key').value = '';
+  document.getElementById('api-dot').className = 'cfg-dot';
+  document.getElementById('api-status').textContent = 'Not connected';
+  document.getElementById('nav-live-customers').style.display = 'none';
+  document.getElementById('nav-live-demo').style.display = 'none';
+}
+
+async function checkDemoReady() {
+  // Try a dummy call — 403 DEMO_MODE_ONLY means endpoint exists but mock mode off, which is fine
+  // 404 means Phase 6 not deployed yet
+  try {
+    const res = await fetch(`${API_BASE}/demo/simulate-inflow`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-secret': 'probe' },
+      body: JSON.stringify({})
+    });
+    if (res.status !== 404) {
+      DEMO_READY = true;
+      document.getElementById('demo-not-live').style.display = 'none';
+      document.getElementById('demo-api-tag').style.display = 'inline-flex';
+      document.getElementById('nav-live-demo').style.display = 'inline-flex';
+      ['ajo','escrow','school'].forEach(t => {
+        const el = document.getElementById(t + '-live-config');
+        if (el) el.style.display = 'block';
+      });
+    }
+  } catch(_) {}
+}
+
+/* ── Dashboard ──────────────────────────────────────────────────────── */
+async function refreshDashboard() {
+  if (!API_LIVE || !API_KEY) return;
+  try {
+    const data = await apiFetch('/customers?limit=1&page=1');
+    const total = data.meta?.total ?? data.pagination?.total ?? '?';
+    document.getElementById('m-customers').textContent = Number(total).toLocaleString();
+    document.getElementById('m-customers-sub').textContent = `${total} total customers`;
+  } catch(e) {
+    document.getElementById('m-customers').textContent = 'Err';
+    document.getElementById('m-customers-sub').textContent = e.message;
+  }
+}
+</script>
+<script>
+/* ── Customers (LIVE) ─────────────────────────────────────────────── */
+async function loadCustomers() {
+  if (!API_LIVE || !API_KEY) {
+    document.getElementById('customers-sub').textContent = 'Connect API to load live data';
+    return;
+  }
+  document.getElementById('customers-loading').style.display = 'block';
+  document.getElementById('customers-error').style.display = 'none';
+  document.getElementById('customers-table-wrap').style.display = 'none';
+  try {
+    const data = await apiFetch('/customers?limit=50');
+    const customers = data.data || [];
+    const total = data.meta?.total ?? data.pagination?.total ?? customers.length;
+    document.getElementById('customers-sub').textContent =
+      `${total} total · live data`;
+    const tbody = document.getElementById('customers-tbody');
+    if (customers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">No customers found. Create your first customer via POST /customers.</td></tr>';
+    } else {
+      tbody.innerHTML = customers.map(c => {
+        const customerId = c.id || c.customerId;
+        const tier = (c.kycTier || 'TIER_0').replace('TIER_', '').toLowerCase();
+        const tierBadge = `<span class="badge badge-t${tier}">${c.kycTier || 'TIER_0'}</span>`;
+        const statusBadge = c.status === 'SUSPENDED'
+          ? '<span class="badge badge-suspended">SUSPENDED</span>'
+          : '<span class="badge badge-active">ACTIVE</span>';
+        const created = c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '—';
+        const acctCount = c._count?.accounts ?? c.accounts?.length ?? '—';
+        return `<tr>
+          <td><div style="font-size:12px;font-weight:500">${escHtml(c.displayName)}</div>
+              <div style="font-size:10px;color:var(--color-text-tertiary)">${escHtml(customerId)}</div></td>
+          <td>${tierBadge}</td>
+          <td class="tbl-mono">${escHtml(c.phone || '—')}</td>
+          <td style="font-size:11px;color:var(--color-text-secondary)">${escHtml(c.email || '—')}</td>
+          <td>${statusBadge}</td>
+          <td style="color:var(--color-text-tertiary);font-size:11px">${created}</td>
+          <td><button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="viewCustomer('${escHtml(customerId)}')">View</button></td>
+        </tr>`;
+      }).join('');
+    }
+    document.getElementById('customers-loading').style.display = 'none';
+    document.getElementById('customers-table-wrap').style.display = 'block';
+  } catch(e) {
+    document.getElementById('customers-loading').style.display = 'none';
+    document.getElementById('customers-error').style.display = 'flex';
+    document.getElementById('customers-error-msg').textContent = `Failed to load customers: ${e.message}`;
+    document.getElementById('customers-table-wrap').style.display = 'block';
+  }
+}
+
+async function viewCustomer(id) {
+  const modal = document.getElementById('customer-detail-modal');
+  const body  = document.getElementById('customer-detail-body');
+  modal.style.display = 'flex';
+  body.innerHTML = '<div style="text-align:center;padding:32px"><div class="spinner"></div><div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading…</div></div>';
+  try {
+    const c = await apiFetch(`/customers/${id}`);
+    const tierNum = (c.kycTier || 'TIER_0').replace('TIER_', '').toLowerCase();
+    const accounts = c.accounts || [];
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+        <div style="width:40px;height:40px;border-radius:50%;background:#0F6E56;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:#fff;flex-shrink:0">
+          ${escHtml((c.displayName||'?').charAt(0).toUpperCase())}
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">${escHtml(c.displayName||'—')}</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono)">${escHtml(c.id||id)}</div>
+        </div>
+        <span class="badge badge-t${tierNum}" style="margin-left:auto">${escHtml(c.kycTier||'TIER_0')}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+        <div style="background:var(--color-background-secondary);border-radius:6px;padding:8px 10px">
+          <div style="font-size:10px;color:var(--color-text-tertiary);margin-bottom:3px">Phone</div>
+          <div style="font-size:12px;font-weight:500">${escHtml(c.phone||'—')}</div>
+        </div>
+        <div style="background:var(--color-background-secondary);border-radius:6px;padding:8px 10px">
+          <div style="font-size:10px;color:var(--color-text-tertiary);margin-bottom:3px">Email</div>
+          <div style="font-size:12px;font-weight:500">${escHtml(c.email||'—')}</div>
+        </div>
+        <div style="background:var(--color-background-secondary);border-radius:6px;padding:8px 10px">
+          <div style="font-size:10px;color:var(--color-text-tertiary);margin-bottom:3px">Created</div>
+          <div style="font-size:12px;font-weight:500">${c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—'}</div>
+        </div>
+        <div style="background:var(--color-background-secondary);border-radius:6px;padding:8px 10px">
+          <div style="font-size:10px;color:var(--color-text-tertiary);margin-bottom:3px">Accounts</div>
+          <div style="font-size:12px;font-weight:500">${accounts.length}</div>
+        </div>
+      </div>
+      ${accounts.length > 0 ? `
+        <div style="font-size:10px;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px">Linked Accounts</div>
+        ${accounts.map(a => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--color-background-secondary);border-radius:6px;margin-bottom:5px;font-size:12px">
+            <span style="font-family:var(--font-mono)">${escHtml(a.accountRef)}</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="color:var(--color-text-tertiary)">${escHtml(a.accountNumber||'')}</span>
+              <span class="badge ${a.status==='ACTIVE'?'badge-active':a.status==='SUSPENDED'?'badge-suspended':'badge-closed'}">${escHtml(a.status)}</span>
+            </div>
+          </div>`).join('')}` : '<div style="font-size:12px;color:var(--color-text-tertiary)">No accounts yet.</div>'}
+      ${(c.nameHistory||[]).length > 1 ? `
+        <div style="font-size:10px;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-text-tertiary);margin:14px 0 8px">Name History</div>
+        ${[...(c.nameHistory||[])].reverse().slice(0,3).map(h => `
+          <div style="font-size:11px;color:var(--color-text-secondary);padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)">
+            <span style="color:var(--color-text-tertiary)">${escHtml(h.previousName||'(initial)')}</span>
+            → <strong>${escHtml(h.newName)}</strong>
+            <span style="color:var(--color-text-tertiary);float:right">${new Date(h.changedAt).toLocaleDateString()}</span>
+          </div>`).join('')}` : ''}
+    `;
+  } catch(e) {
+    body.innerHTML = `<div style="color:#A32D2D;font-size:12px;padding:16px">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+/* ── Accounts (stub — Phase 4) ───────────────────────────────────── */
+async function loadAccounts() {
+  if (!API_LIVE || !API_KEY) return;
+  try {
+    const data = await apiFetch('/accounts');
+    const accounts = data.data || [];
+    document.getElementById('accounts-sub').textContent =
+      `${data.pagination?.total ?? accounts.length} accounts · live data`;
+    document.getElementById('accounts-not-live').style.display = 'none';
+    const tbody = document.getElementById('accounts-tbody');
+    tbody.innerHTML = accounts.map(a => `<tr>
+      <td class="tbl-mono">${escHtml(a.accountRef)}</td>
+      <td class="tbl-mono">${escHtml(a.accountNumber || '—')}</td>
+      <td style="font-size:12px">${escHtml(a.customer?.displayName || '—')}</td>
+      <td>${statusBadge(a.status)}</td>
+      <td style="font-size:12px;font-weight:500;color:#0F6E56">${a.rules?.length ?? 0}</td>
+      <td style="font-size:12px">₦${((a.totalAmountKobo || 0) / 100).toLocaleString()}</td>
+      <td style="color:var(--color-text-tertiary);font-size:11px">${a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">No accounts found.</td></tr>';
+  } catch(e) {
+    document.getElementById('accounts-sub').textContent = 'Accounts API not yet available (Phase 4)';
+  }
+}
+
+function statusBadge(s) {
+  const map = { ACTIVE:'badge-active', SUSPENDED:'badge-suspended', CLOSED:'badge-closed', EXPIRED:'badge-closed', FLAGGED:'badge-flagged' };
+  return `<span class="badge ${map[s]||'badge-active'}">${s||'—'}</span>`;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Create Customer Modal ───────────────────────────────────────── */
+function openCreateCustomer() {
+  if (!API_LIVE || !API_KEY) { alert('Connect the API first.'); return; }
+  document.getElementById('cc-name').value = '';
+  document.getElementById('cc-phone').value = '';
+  document.getElementById('cc-email').value = '';
+  document.getElementById('cc-bvn').value = '';
+  document.getElementById('cc-error').style.display = 'none';
+  const bd = document.getElementById('modal-backdrop');
+  bd.style.display = 'flex';
+}
+
+function closeCreateCustomer() {
+  document.getElementById('modal-backdrop').style.display = 'none';
+}
+
+async function submitCreateCustomer() {
+  const name  = document.getElementById('cc-name').value.trim();
+  const phone = document.getElementById('cc-phone').value.trim();
+  const email = document.getElementById('cc-email').value.trim();
+  const bvn   = document.getElementById('cc-bvn').value.trim();
+  const errEl = document.getElementById('cc-error');
+  const btn   = document.getElementById('cc-submit');
+
+  if (!name) { errEl.textContent = 'Display name is required.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating…';
+
+  const body = { displayName: name };
+  if (phone) body.phone = phone;
+  if (email) body.email = email;
+  if (bvn)   body.bvnRef = bvn;
+
+  try {
+    const result = await apiFetch('/customers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    closeCreateCustomer();
+    await loadCustomers(); // refresh the list
+    // Show a brief success flash
+    const sub = document.getElementById('customers-sub');
+    const prev = sub.textContent;
+    sub.textContent = `✓ Customer "${result.displayName}" created (${result.kycTier})`;
+    setTimeout(() => loadCustomers(), 2000);
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-plus"></i> Create';
+  }
+}
+
+// Close modal on backdrop click
+document.getElementById('modal-backdrop').addEventListener('click', function(e) {
+  if (e.target === this) closeCreateCustomer();
+});
+document.getElementById('customer-detail-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+</script>
+<script>
+/* ── Demo Scenarios ──────────────────────────────────────────────── */
+const demoDefaults = {
+  ajo:    { accountNum: 'ajo-account-num', amount: 'ajo-amount',    defaultAmount: 15000000, narration: 'Ajo savings contribution' },
+  escrow: { accountNum: 'escrow-account-num', amount: 'escrow-amount', defaultAmount: 120000000, narration: 'Escrow buyer payment' },
+  school: { accountNum: 'school-account-num', amount: 'school-amount', defaultAmount: 5000000, narration: 'SCHOOL FEES GREENFIELD TERM 3' },
+};
+
+const demoScripts = {
+  ajo: [
+    ['c-dim','Initialising Ajo Savings scenario…'],
+    ['c-key','account: ajo-amaka-jan · cumulative: ₦350,000'],
+    ['c-info','▶ Incoming payment: ₦150,000 from Emeka Obi'],
+    ['c-dim','  NMB gateway processing…'],
+    ['c-ok','  Payment credited → cumulative now ₦500,000'],
+    ['c-key','Rule engine evaluating rules (sequential)…'],
+    ['c-key','  Rule #1 savings_target_gate: 500000 ≥ 500000 ✓'],
+    ['c-warn','  Action: suspend_account → executing…'],
+    ['c-ok','  account_status = SUSPENDED'],
+    ['c-key','  Rule #2 high_value_alert: 150000 ≥ 50000 ✓'],
+    ['c-ok','  Webhook fired → partner_url → 200 OK'],
+    ['c-ok','Audit log created: 3 events'],
+    ['c-ok','✅ Demo complete — ajo savings target reached'],
+  ],
+  escrow: [
+    ['c-dim','Initialising Escrow scenario…'],
+    ['c-key','account: ako-escrow-0042 · buyer: Emeka Obi'],
+    ['c-info','▶ Buyer payment: ₦1,200,000'],
+    ['c-ok','  Funds received → account_status: ACTIVE (held)'],
+    ['c-key','  Rule: hold_until_delivery — watching…'],
+    ['c-info','▶ Delivery confirmation webhook received'],
+    ['c-key','  Condition met → executing release_funds'],
+    ['c-ok','  Payout ₦1,200,000 to seller account'],
+    ['c-ok','  account_status = CLOSED'],
+    ['c-ok','Audit log created: 5 events'],
+    ['c-ok','✅ Demo complete — escrow released successfully'],
+  ],
+  school: [
+    ['c-dim','Initialising School Fees scenario…'],
+    ['c-key','account: ako-school-0019 · student: Ngozi Eze'],
+    ['c-info','▶ Incoming payment: ₦50,000 — GREENFIELD TERM 3'],
+    ['c-ok','  Payment credited to dedicated account'],
+    ['c-key','  Rule: auto_reconcile — matching narration…'],
+    ['c-ok','  Match found → student marked PAID (term 3)'],
+    ['c-key','  Rule: notify_bursar — firing webhook…'],
+    ['c-ok','  POST /bursar/notify → 200 OK'],
+    ['c-ok','Audit log created: 4 events'],
+    ['c-ok','✅ Demo complete — fees reconciled, bursar notified'],
+  ],
+};
+
+function ts() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function consoleLog(cls, msg) {
+  const con = document.getElementById('demo-console');
+  const div = document.createElement('div');
+  div.className = 'console-line';
+  div.innerHTML = `<span class="c-ts">${ts()}</span><span class="${cls}">${msg}</span>`;
+  con.appendChild(div);
+  con.scrollTop = con.scrollHeight;
+}
+
+async function runDemo(type) {
+  const con = document.getElementById('demo-console');
+  const tag = document.getElementById('demo-live-tag');
+  tag.style.display = 'inline-flex';
+  con.innerHTML = '<div class="console-label">SIMULATION CONSOLE</div>';
+
+  if (DEMO_READY) {
+    await runLiveDemo(type);
+  } else {
+    runScriptedDemo(type);
+  }
+}
+
+function runScriptedDemo(type) {
+  const tag = document.getElementById('demo-live-tag');
+  const lines = demoScripts[type];
+  let i = 0;
+  function next() {
+    if (i >= lines.length) { tag.style.display = 'none'; return; }
+    const [cls, msg] = lines[i++];
+    consoleLog(cls, msg);
+    setTimeout(next, 380);
+  }
+  next();
+}
+
+async function runLiveDemo(type) {
+  const tag = document.getElementById('demo-live-tag');
+  const accountNum = document.getElementById(demoDefaults[type].accountNum)?.value.trim();
+  const amountKobo = parseInt(document.getElementById(demoDefaults[type].amount)?.value) || demoDefaults[type].defaultAmount;
+
+  if (!accountNum) {
+    consoleLog('c-err', '✗ Enter an account number to simulate inflow on');
+    tag.style.display = 'none';
+    return;
+  }
+
+  const adminSecret = prompt('Enter ADMIN_SECRET to simulate inflow:');
+  if (!adminSecret) { tag.style.display = 'none'; return; }
+
+  consoleLog('c-key', `▶ Calling POST /demo/simulate-inflow`);
+  consoleLog('c-dim', `  accountNumber: ${accountNum}`);
+  consoleLog('c-dim', `  amountKobo: ${amountKobo} (₦${(amountKobo/100).toLocaleString()})`);
+
+  try {
+    const res = await fetch(`${API_BASE}/demo/simulate-inflow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-secret': adminSecret },
+      body: JSON.stringify({
+        accountNumber: accountNum,
+        amountKobo,
+        senderName: 'Demo Sender',
+        senderAccountNumber: '0000000000',
+        senderBankCode: '044',
+        narration: demoDefaults[type].narration,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+
+    consoleLog('c-ok', `  Enqueued · eventId: ${body.eventId}`);
+    consoleLog('c-ok', `  transactionRef: ${body.transactionRef}`);
+    consoleLog('c-dim', '  Waiting for async pipeline to process…');
+
+    // Poll account state after 1s
+    await new Promise(r => setTimeout(r, 1200));
+    consoleLog('c-key', `▶ Polling GET /accounts/${accountNum}/state`);
+    try {
+      const state = await apiFetch(`/accounts/${accountNum}/state`);
+      consoleLog('c-ok', `  account.status = ${state.account?.status}`);
+      consoleLog('c-ok', `  cumulative = ₦${((state.summary?.totalAmountKobo||0)/100).toLocaleString()}`);
+      consoleLog('c-ok', `  totalInflows = ${state.summary?.totalInflows}`);
+      if (state.account?.status === 'SUSPENDED') consoleLog('c-warn', '  Account auto-suspended by rule engine ✓');
+    } catch(e) {
+      consoleLog('c-warn', `  Could not poll state: ${e.message}`);
+    }
+    consoleLog('c-ok', '✅ Live demo complete');
+  } catch(e) {
+    consoleLog('c-err', `✗ Error: ${e.message}`);
+  }
+  tag.style.display = 'none';
+}
+
+/* ── Navigation ─────────────────────────────────────────────────── */
+const screenTitles = {
+  dashboard:'Dashboard', customers:'Customers', accounts:'Accounts',
+  rules:'Rule Builder', ledger:'Ledger', audit:'Audit Trail', demo:'Demo Scenarios'
+};
+function showScreen(id, el) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.aos-nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  el.classList.add('active');
+  document.getElementById('topbar-title').textContent = screenTitles[id] || id;
+  if (id === 'customers') { if (API_LIVE) loadCustomers(); }
+  if (id === 'accounts') { if (API_LIVE) loadAccounts(); }
+}
+function setToggle(el) {
+  el.parentElement.querySelectorAll('.toggle-opt').forEach(o => o.classList.remove('on'));
+  el.classList.add('on');
+}
+function filterChip(el) {
+  el.closest('.filter-bar').querySelectorAll('.filter-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+}
+
+/* ── Chart ──────────────────────────────────────────────────────── */
+new Chart(document.getElementById('inflowChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Jun 6','7','8','9','10','11','12','13','14','15','16','17','18','Jun 19'],
+    datasets: [{ data: [42,55,38,70,85,62,90,110,95,130,118,145,160,180], backgroundColor: '#0F6E56', borderRadius: 3, borderSkipped: false }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: v => '₦' + v.raw + 'M' } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#888780', maxTicksLimit: 5, maxRotation: 0 } },
+      y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 9 }, color: '#888780', callback: v => '₦' + v + 'M' }, border: { display: false } }
+    }
+  }
+});
+</script>
+</body>
+</html>
