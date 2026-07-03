@@ -132,7 +132,7 @@ export class AccountsController {
       accountRef,
       (req as unknown as { business: { id: string } }).business.id,
       actor,
-      req.business as never,
+      req.business,
     );
   }
 }
