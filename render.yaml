@@ -1,0 +1,41 @@
+services:
+  # ── Web Service (NestJS API) ────────────────────────────────────────────────
+  - type: web
+    name: accountos-api
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build && pnpm exec prisma generate
+    startCommand: pnpm exec prisma migrate deploy && node dist/main
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: APP_VERSION
+        value: 1.0.0
+      - key: NOMBA_API_BASE_URL
+        value: https://api.nomba.com/v1
+      - key: NOMBA_MOCK_MODE
+        value: "true"
+      - key: DEMO_MODE_ENABLED
+        value: "true"
+      - key: THROTTLE_ADMIN_LIMIT
+        value: "10"
+      - key: THROTTLE_ADMIN_TTL
+        value: "60000"
+      - key: THROTTLE_WEBHOOK_LIMIT
+        value: "100"
+      - key: THROTTLE_WEBHOOK_TTL
+        value: "60000"
+      - key: THROTTLE_API_LIMIT
+        value: "300"
+      - key: THROTTLE_API_TTL
+        value: "60000"
+      # These must be set manually in Render dashboard (secrets):
+      # DATABASE_URL    — from Render PostgreSQL add-on
+      # REDIS_URL       — from Render Redis add-on
+      # ADMIN_SECRET    — generate with: openssl rand -hex 32
+      # ENCRYPTION_KEY  — generate with: openssl rand -hex 32 (min 32 chars)
+      # DEMO_WEBHOOK_URL (optional) — leave blank to use self-hosted echo endpoint

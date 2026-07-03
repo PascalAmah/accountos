@@ -50,6 +50,6 @@ async function bootstrap() {
   // Serve static demo/brand pages from /public
   app.useStaticAssets(join(process.cwd(), 'public'));
 
-  await app.listen(appConfig.PORT);
+  await app.listen(appConfig.PORT, '0.0.0.0');
 }
 void bootstrap();
