@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: free
     buildCommand: chmod +x ./build.sh && ./build.sh
-    startCommand: pnpm exec prisma migrate deploy && node dist/main
+    startCommand: pnpm exec prisma migrate deploy && node dist/src/main
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
