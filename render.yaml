@@ -5,7 +5,7 @@ services:
     runtime: node
     region: oregon
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm run build && pnpm exec prisma generate
+    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma generate && pnpm run build
     startCommand: pnpm exec prisma migrate deploy && node dist/main
     healthCheckPath: /api/v1/health
     envVars:
