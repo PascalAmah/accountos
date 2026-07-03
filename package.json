@@ -1,8 +1,7 @@
 {
   "name": "accountos",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "Programmable, stateful virtual account infrastructure built on Nomba — rules engine, immutable ledger, audit trail, and treasury management for fintechs and savings cooperatives in Africa.",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
