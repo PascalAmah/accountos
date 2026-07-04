@@ -22,6 +22,7 @@ import { UpdateBusinessCredentialsDto } from './dto/update-business-credentials.
 import { CreateApiKeyDto } from './dto/create-api-key.dto';
 import {
   ApiKeyListItem,
+  BusinessProfileResult,
   CreateApiKeyResult,
   RegisterBusinessResult,
   UpdateBusinessCredentialsResult,
@@ -332,5 +333,40 @@ export class AuthService {
       createdAt: k.createdAt,
       revokedAt: k.revokedAt,
     }));
+  }
+
+  /**
+   * Return the business profile for the authenticated business.
+   * Sensitive credential values are never exposed — only their presence is indicated.
+   */
+  async getMyBusiness(businessId: string): Promise<BusinessProfileResult> {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    const b = business as unknown as Record<string, unknown>;
+
+    return {
+      id: business.id,
+      name: business.name,
+      email: business.email,
+      webhookUrl: business.webhookUrl ?? null,
+      nombaAccountId: business.nombaAccountId ?? null,
+      nombaSubAccountId: (b['nombaSubAccountId'] as string | null) ?? null,
+      nombaClientId: business.nombaClientId ?? null,
+      nombaClientSecretSet: !!business.nombaClientSecret,
+      nombaWebhookSecretSet: !!business.nombaWebhookSecret,
+      hasNombaCredentials:
+        !!business.nombaAccountId &&
+        !!(b['nombaSubAccountId'] as string | null) &&
+        !!business.nombaClientId &&
+        !!business.nombaClientSecret,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt,
+    };
   }
 }

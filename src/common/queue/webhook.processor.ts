@@ -235,6 +235,91 @@ export class WebhookProcessorService extends WorkerHost {
                   );
                 }
               }
+
+              // ── Steps 10–11: Treasury bucket OUTFLOW + ALLOCATE_FUNDS audit ──
+              // When a RELEASE_FUNDS rule targets a treasury bucket and succeeded,
+              // write the corresponding OUTFLOW LedgerEntry on the bucket account
+              // so its balance reflects the inflow allocation.
+              if (
+                result.status === 'COMPLETED' &&
+                evaluatedRule.rule.action === 'RELEASE_FUNDS'
+              ) {
+                const rulePayload = (evaluatedRule.rule.payload ??
+                  {}) as Record<string, unknown>;
+                const destinationAccountRef =
+                  rulePayload.destinationAccountRef as string | undefined;
+
+                if (destinationAccountRef) {
+                  const destinationAccount =
+                    await this.prisma.account.findFirst({
+                      where: {
+                        accountRef: destinationAccountRef,
+                        businessId,
+                        accountType: 'TREASURY_BUCKET',
+                      },
+                      select: { id: true, accountRef: true },
+                    });
+
+                  if (destinationAccount) {
+                    // Compute the transfer amount (same logic as rule engine)
+                    const percentage = rulePayload.percentage as
+                      | number
+                      | undefined;
+                    const amountKobo = rulePayload.amountKobo as
+                      | number
+                      | undefined;
+                    let transferAmountKobo: bigint;
+
+                    if (percentage !== undefined) {
+                      transferAmountKobo = BigInt(
+                        Math.floor(
+                          (percentage / 100) *
+                            Number(ledgerEntryRecord.amountKobo),
+                        ),
+                      );
+                    } else if (amountKobo !== undefined) {
+                      transferAmountKobo = BigInt(amountKobo);
+                    } else {
+                      transferAmountKobo = 0n;
+                    }
+
+                    if (transferAmountKobo > 0n) {
+                      // Step 10: Write OUTFLOW on the treasury bucket account
+                      await this.ledgerService.writeOutflow({
+                        accountId: destinationAccount.id,
+                        nombaTransactionRef: `alloc_${payload.transactionRef}_${destinationAccount.id.slice(0, 8)}`,
+                        amountKobo: Number(transferAmountKobo),
+                        narration: `RELEASE_FUNDS allocation from ${account.accountRef}`,
+                        customerNameSnapshot: 'System',
+                        kycTierAtTime: 'TIER_1',
+                        cumulativeAmountKobo: 0n,
+                      });
+
+                      // Step 11: Write ALLOCATE_FUNDS AuditLogEntry on the bucket
+                      await this.auditService.log({
+                        actor: 'system',
+                        action: 'ALLOCATE_FUNDS',
+                        accountId: destinationAccount.id,
+                        businessId,
+                        metadata: {
+                          sourceAccountRef: account.accountRef,
+                          destinationAccountRef: destinationAccount.accountRef,
+                          amountKobo: transferAmountKobo.toString(),
+                          nombaTransactionRef: payload.transactionRef,
+                        },
+                      });
+
+                      this.logger.log(
+                        {
+                          destinationAccountRef,
+                          transferAmountKobo: transferAmountKobo.toString(),
+                        },
+                        'Treasury bucket OUTFLOW written (ALLOCATE_FUNDS)',
+                      );
+                    }
+                  }
+                }
+              }
             }
           }
         }

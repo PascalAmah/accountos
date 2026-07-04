@@ -31,6 +31,26 @@ import { UpdateBusinessCredentialsDto } from './dto/update-business-credentials.
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // ─── GET /businesses/me ───────────────────────────────────────────────────
+
+  @Get('businesses/me')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the authenticated business profile' })
+  @ApiHeader({
+    name: 'x-api-key',
+    description: 'API key for authentication',
+    required: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Business profile (secrets redacted)',
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
+  async getMyBusiness(@Req() req: Request & { business: { id: string } }) {
+    return this.authService.getMyBusiness(req.business.id);
+  }
+
   // ─── POST /businesses ──────────────────────────────────────────────────────
 
   @Public()

@@ -12,6 +12,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { LedgerModule } from '../../ledger/ledger.module';
 import { AuditModule } from '../../audit/audit.module';
 import { RulesModule } from '../../rules/rules.module';
+import { NombaClientModule } from '../../nomba-client/nomba-client.module';
 
 @Global()
 @Module({
@@ -29,6 +30,7 @@ import { RulesModule } from '../../rules/rules.module';
     PrismaModule,
     LedgerModule,
     AuditModule,
+    NombaClientModule,
     forwardRef(() => RulesModule),
   ],
   providers: [WebhookProcessorService, RetryProcessorService],

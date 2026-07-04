@@ -311,7 +311,16 @@ export class AccountLifecycleService {
       });
     }
 
-    // Guard: terminal states
+    // Guard: CLOSED and EXPIRED are terminal — they cannot be set via PATCH
+    // (CLOSED is only reachable via DELETE /accounts/:ref; EXPIRED via Nomba lifecycle)
+    if (dto.status === 'CLOSED' || dto.status === 'EXPIRED') {
+      throw new BadRequestException({
+        message: `Cannot set status to '${dto.status}' via status override — use the account close endpoint instead`,
+        code: ErrorCodes.ACCOUNT_TERMINAL_STATE,
+      });
+    }
+
+    // Guard: already in a terminal state — no further changes allowed
     if (account.status === 'CLOSED' || account.status === 'EXPIRED') {
       throw new BadRequestException({
         message: `Account is in terminal state '${account.status}' — no further status changes allowed`,
@@ -319,12 +328,10 @@ export class AccountLifecycleService {
       });
     }
 
-    // Guard: valid transitions matrix
+    // Guard: valid transitions matrix (only non-terminal targets allowed here)
     const validTransitions: Record<string, string[]> = {
-      ACTIVE: ['SUSPENDED', 'EXPIRED'],
+      ACTIVE: ['SUSPENDED'],
       SUSPENDED: ['ACTIVE'],
-      EXPIRED: [],
-      CLOSED: [],
     };
 
     const allowed = validTransitions[account.status] ?? [];
@@ -343,7 +350,7 @@ export class AccountLifecycleService {
       where: { id: account.id },
       data: {
         status: dto.status,
-        ...(dto.status === 'CLOSED'
+        ...(dto.status
           ? { closedAt: new Date(), closedReason: dto.reason }
           : {}),
       },
@@ -382,9 +389,10 @@ export class AccountLifecycleService {
    * Steps:
    * 1. Load the account (scoped to business)
    * 2. Assert it is not already CLOSED or in a terminal state
-   * 3. Call Nomba to expire the DVA (if not a treasury bucket)
-   * 4. Set status to CLOSED with timestamp and reason
-   * 5. Audit
+   * 3. Archive all PENDING/RETRYING RuleExecutions (EC-02)
+   * 4. Call Nomba to expire the DVA
+   * 5. Set status to CLOSED with timestamp and reason
+   * 6. Audit
    */
   async closeAccount(
     accountRef: string,
@@ -429,6 +437,26 @@ export class AccountLifecycleService {
       });
     }
 
+    // ── EC-02: Archive all PENDING and RETRYING RuleExecutions ────────────
+    // Must happen before expiring the DVA so we have a record of what was in-flight.
+    const { count: archivedCount } = await this.prisma.ruleExecution.updateMany(
+      {
+        where: {
+          accountId: account.id,
+          status: { in: ['PENDING', 'RETRYING'] },
+        },
+        data: {
+          status: 'ARCHIVED',
+          archivedReason: 'CLOSED_BEFORE_COMPLETION',
+        },
+      },
+    );
+
+    this.logger.log(
+      { accountRef, archivedCount },
+      'Archived pending/retrying rule executions (EC-02)',
+    );
+
     // Expire at Nomba (treasury buckets are DVAs too)
     await this.nombaClient.expireAccount(business, account.nombaAccountId);
 
@@ -456,6 +484,7 @@ export class AccountLifecycleService {
       afterState: {
         status: 'CLOSED',
         closedAt: updated.closedAt?.toISOString(),
+        archivedExecutionCount: archivedCount,
       },
       reasonCode: 'ACCOUNT_CLOSED',
     });
@@ -465,6 +494,7 @@ export class AccountLifecycleService {
         accountRef,
         accountType: account.accountType,
         actor,
+        archivedCount,
       },
       'Account closed',
     );

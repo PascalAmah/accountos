@@ -24,3 +24,18 @@ export interface ApiKeyListItem {
   createdAt: Date;
   revokedAt: Date | null;
 }
+
+export interface BusinessProfileResult {
+  id: string;
+  name: string;
+  email: string;
+  webhookUrl: string | null;
+  nombaAccountId: string | null;
+  nombaSubAccountId: string | null;
+  nombaClientId: string | null;
+  nombaClientSecretSet: boolean;
+  nombaWebhookSecretSet: boolean;
+  hasNombaCredentials: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
