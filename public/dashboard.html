@@ -2070,11 +2070,11 @@
         </div>
         <div style="display: flex; flex-direction: column; gap: 12px">
           <div>
-            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Account Ref *</label>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Account Ref * <span style="font-weight:400;color:#6e7781">(16–64 chars, must be unique)</span></label>
             <input
               id="pa-ref"
               type="text"
-              placeholder="e.g. ajo-amaka-jan-2026"
+              placeholder="e.g. ajo-amaka-savings-jan-2026"
               style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--font-mono);outline:none"
             />
           </div>
@@ -2852,7 +2852,12 @@
                     ${account.accountNumber ? `<span style="margin-left:8px;font-family:var(--font-mono)">${escHtml(account.accountNumber)}</span>` : ''}
                   </div>
                 </div>
-                <div style="font-size:11px;color:var(--color-text-tertiary)">${rules.length} rule${rules.length !== 1 ? 's' : ''}</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <span style="font-size:11px;color:var(--color-text-tertiary)">${rules.length} rule${rules.length !== 1 ? 's' : ''}</span>
+                  <button class="btn-primary" onclick="openManageRules('${escHtml(ref)}')">
+                    <i class="ti ti-pencil"></i> Manage Rules
+                  </button>
+                </div>
               </div>
             </div>
             ${rules.length === 0
@@ -2863,10 +2868,10 @@
                     <span class="priority-badge">#${i + 1}</span>
                     <span style="font-size:12px;color:var(--color-text-primary);flex:1;font-weight:500;font-family:var(--font-mono)">${escHtml(r.trigger?.toLowerCase() || '—')}</span>
                     <span class="badge ${r.status === 'ACTIVE' ? 'badge-active' : 'badge-suspended'}">${r.status || 'ACTIVE'}</span>
-                    <button onclick="toggleRule('${escHtml(ref)}','${escHtml(r.id)}',${r.status !== 'ACTIVE'})"
-                      title="${r.status === 'ACTIVE' ? 'Disable' : 'Enable'}"
-                      style="background:none;border:none;cursor:pointer;padding:2px 6px;font-size:13px;color:var(--color-text-tertiary)">
-                      <i class="ti ${r.status === 'ACTIVE' ? 'ti-player-pause' : 'ti-player-play'}"></i>
+                    <button onclick="archiveRule('${escHtml(ref)}','${escHtml(r.id)}')"
+                      title="Archive this rule (disables it permanently)"
+                      style="background:none;border:none;cursor:pointer;padding:2px 6px;font-size:13px;color:#854f0b">
+                      <i class="ti ti-archive"></i>
                     </button>
                     <button onclick="deleteRule('${escHtml(ref)}','${escHtml(r.id)}')"
                       title="Delete rule"
@@ -2895,20 +2900,20 @@
         }
       }
 
-      async function toggleRule(accountRef, ruleId, enable) {
+      async function archiveRule(accountRef, ruleId) {
+        if (!confirm('Archive this rule? It will be permanently disabled and removed from evaluation.')) return;
         try {
           await apiFetch(`/accounts/${accountRef}/rules/${ruleId}`, {
             method: 'PATCH',
-            body: JSON.stringify({ enabled: enable }),
+            body: JSON.stringify({ enabled: false }),
           });
-          // Invalidate cache and refresh
           _accountsCache = null;
-          await selectRulesAccount(accountRef);
           const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
           _accountsCache = d.data || [];
           renderRulesAccountList(_accountsCache);
+          await selectRulesAccount(accountRef);
         } catch (e) {
-          alert(`Failed to toggle rule: ${e.message}`);
+          alert(`Failed to archive rule: ${e.message}`);
         }
       }
 
@@ -2923,6 +2928,75 @@
           await selectRulesAccount(accountRef);
         } catch (e) {
           alert(`Failed to delete rule: ${e.message}`);
+        }
+      }
+
+      /* ── Manage Rules Modal (PUT /accounts/:ref/rules) ──────────────── */
+      let _manageRulesRef = null;
+
+      function openManageRules(accountRef) {
+        _manageRulesRef = accountRef;
+        // Build current rules as editable JSON from the state we already loaded
+        const state = _accountsCache?.find(a => a.accountRef === accountRef);
+        const rules = state?.rules || [];
+        const defaultRules = rules.length > 0
+          ? rules.map(r => ({
+              trigger: (r.trigger || '').toLowerCase(),
+              condition: r.condition || {},
+              action: (r.action || '').toLowerCase(),
+              ...(r.payload ? { payload: r.payload } : {}),
+              priority: r.priority ?? 0,
+            }))
+          : [{ trigger: 'inflow_received', condition: { amount_gte: 5000000 }, action: 'suspend_account', priority: 0 }];
+
+        document.getElementById('mr-ref').textContent = accountRef;
+        document.getElementById('mr-exec-model').value = state?.executionModel || 'SEQUENTIAL';
+        document.getElementById('mr-rules-json').value = JSON.stringify(defaultRules, null, 2);
+        document.getElementById('mr-error').style.display = 'none';
+        document.getElementById('manage-rules-modal').style.display = 'flex';
+      }
+
+      function closeManageRules() {
+        document.getElementById('manage-rules-modal').style.display = 'none';
+      }
+
+      async function submitManageRules() {
+        const executionModel = document.getElementById('mr-exec-model').value;
+        const rulesRaw = document.getElementById('mr-rules-json').value.trim();
+        const errEl = document.getElementById('mr-error');
+        const btn = document.getElementById('mr-submit');
+
+        let rules;
+        try {
+          rules = JSON.parse(rulesRaw);
+          if (!Array.isArray(rules)) throw new Error('Rules must be a JSON array.');
+        } catch (e) {
+          errEl.textContent = `Invalid JSON: ${e.message}`;
+          errEl.style.display = 'block';
+          return;
+        }
+
+        errEl.style.display = 'none';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Saving…';
+
+        try {
+          await apiFetch(`/accounts/${_manageRulesRef}/rules`, {
+            method: 'PUT',
+            body: JSON.stringify({ executionModel, rules }),
+          });
+          closeManageRules();
+          _accountsCache = null;
+          const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = d.data || [];
+          renderRulesAccountList(_accountsCache);
+          await selectRulesAccount(_manageRulesRef);
+        } catch (e) {
+          errEl.textContent = e.message;
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="ti ti-check"></i> Save Rules';
         }
       }
 
@@ -3003,6 +3077,11 @@
         .getElementById('provision-account-modal')
         .addEventListener('click', function (e) {
           if (e.target === this) closeProvisionAccount();
+        });
+      document
+        .getElementById('manage-rules-modal')
+        .addEventListener('click', function (e) {
+          if (e.target === this) closeManageRules();
         });
 
       /* ── Provision Account Modal ─────────────────────────────────────── */
@@ -3086,8 +3165,18 @@
           errEl.style.display = 'block';
           return;
         }
+        if (accountRef.length < 16 || accountRef.length > 64) {
+          errEl.textContent = `Account Ref must be 16–64 characters (currently ${accountRef.length}).`;
+          errEl.style.display = 'block';
+          return;
+        }
         if (!accountName) {
           errEl.textContent = 'Account Name is required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        if (accountName.length < 8 || accountName.length > 64) {
+          errEl.textContent = `Account Name must be 8–64 characters (currently ${accountName.length}).`;
           errEl.style.display = 'block';
           return;
         }
@@ -3477,7 +3566,7 @@
 
         // Shared state across steps
         let customerId = 'cust_school_' + Date.now().toString(36);
-        let accountRef = 'ako-school-' + Date.now().toString(36).slice(-4);
+        let accountRef = 'ako-school-' + Date.now().toString(36);
         let accountNumber =
           '99' + String(Math.floor(Math.random() * 90000000) + 10000000);
         let finalStatus = 'PENDING';
@@ -3889,7 +3978,7 @@
         const totalKobo = inflow1Kobo + inflow2Kobo;
 
         let customerId = 'cust_ajo_' + Date.now().toString(36);
-        let accountRef = 'ajo-' + Date.now().toString(36).slice(-6);
+        let accountRef = 'ajo-savings-' + Date.now().toString(36);
         let accountNumber =
           '99' + String(Math.floor(Math.random() * 90000000) + 10000000);
         let bucketRefs = [];
@@ -4414,5 +4503,48 @@
         },
       });
     </script>
+
+    <!-- ── Manage Rules Modal ─────────────────────────────────────────────── -->
+    <div id="manage-rules-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center">
+      <div style="background:#fff;border-radius:12px;padding:24px;width:560px;max-width:94vw;max-height:88vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.15)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div>
+            <div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">Manage Rules</div>
+            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px;font-family:var(--font-mono)" id="mr-ref"></div>
+          </div>
+          <button onclick="closeManageRules()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--color-text-tertiary)">✕</button>
+        </div>
+        <div style="background:#faeeda;border:.5px solid #ef9f27;border-radius:6px;padding:8px 12px;font-size:11px;color:#854f0b;margin-bottom:14px">
+          <i class="ti ti-alert-triangle"></i> This replaces the <strong>entire rule set</strong>. Existing rules are archived and replaced with what you save here.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Execution Model</label>
+            <select id="mr-exec-model" style="width:100%;border:.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
+              <option value="SEQUENTIAL">SEQUENTIAL — first matching rule fires</option>
+              <option value="PARALLEL">PARALLEL — all matching rules fire</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">
+              Rules JSON — array of rule objects
+              <span style="font-weight:400;color:#6e7781">(trigger, condition, action, optional payload &amp; priority)</span>
+            </label>
+            <textarea id="mr-rules-json" rows="12"
+              style="width:100%;border:.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical;line-height:1.6"></textarea>
+            <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:4px">
+              All amounts in <strong>kobo</strong> (₦50,000 = 5000000). Triggers: inflow_received · custom_event · time_elapsed · tier_changed. Actions: suspend_account · release_funds · notify_webhook · flag_for_review · reactivate_account · expire_account.
+            </div>
+          </div>
+          <div id="mr-error" style="display:none;background:#fcebeb;border:.5px solid #a32d2d;border-radius:6px;padding:8px 12px;font-size:12px;color:#a32d2d"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+            <button class="btn-secondary" onclick="closeManageRules()">Cancel</button>
+            <button class="btn-primary" id="mr-submit" onclick="submitManageRules()">
+              <i class="ti ti-check"></i> Save Rules
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
