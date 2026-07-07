@@ -1042,7 +1042,7 @@
           <i class="ti ti-wallet"></i> Accounts
         </div>
         <div class="aos-nav-item" onclick="showScreen('rules', this)">
-          <i class="ti ti-circuit-switchboard"></i> Rules
+          <i class="ti ti-adjustments-horizontal"></i> Rules
         </div>
         <div class="aos-nav-label">Finance</div>
         <div class="aos-nav-item" onclick="showScreen('ledger', this)">
@@ -1106,27 +1106,27 @@
               <div class="metric-card">
                 <div class="metric-label">Active Accounts</div>
                 <div class="metric-val" id="m-accounts">—</div>
-                <div class="metric-sub">connect API to load</div>
+                <div class="metric-sub" id="m-accounts-sub">connect API to load</div>
               </div>
               <div class="metric-card">
-                <div class="metric-label">Active Rules</div>
-                <div class="metric-val">142</div>
-                <div class="metric-sub">Across 38 templates</div>
+                <div class="metric-label">Total Rules</div>
+                <div class="metric-val" id="m-rules">—</div>
+                <div class="metric-sub" id="m-rules-sub">connect API to load</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">Total Inflows</div>
-                <div class="metric-val">₦2.4B</div>
-                <div class="metric-sub metric-up">↑ 31% this month</div>
+                <div class="metric-val" id="m-inflows">—</div>
+                <div class="metric-sub" id="m-inflows-sub">connect API to load</div>
               </div>
               <div class="metric-card">
-                <div class="metric-label">Triggered Automations</div>
-                <div class="metric-val">8,304</div>
-                <div class="metric-sub">97.2% success rate</div>
+                <div class="metric-label">Rule Executions</div>
+                <div class="metric-val" id="m-executions">—</div>
+                <div class="metric-sub" id="m-executions-sub">connect API to load</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">Audit Events</div>
-                <div class="metric-val">24,019</div>
-                <div class="metric-sub">Fully immutable</div>
+                <div class="metric-val" id="m-audit">—</div>
+                <div class="metric-sub" id="m-audit-sub">connect API to load</div>
               </div>
             </div>
             <div class="two-col">
@@ -1140,41 +1140,9 @@
                 <div class="card-label">Recent Activity</div>
                 <div id="activity-feed">
                   <div class="feed-item">
-                    <div class="feed-dot" style="background: #3b6d11"></div>
+                    <div class="feed-dot" style="background: var(--color-border-secondary)"></div>
                     <div>
-                      <div class="feed-text">
-                        Rule triggered —
-                        <strong>Ajo savings target reached</strong>
-                      </div>
-                      <div class="feed-time">2 min ago · ako-amaka-jan</div>
-                    </div>
-                  </div>
-                  <div class="feed-item">
-                    <div class="feed-dot" style="background: #185fa5"></div>
-                    <div>
-                      <div class="feed-text">
-                        Payment received — <strong>₦150,000</strong> from Emeka
-                        Obi
-                      </div>
-                      <div class="feed-time">8 min ago · ako-escrow-0042</div>
-                    </div>
-                  </div>
-                  <div class="feed-item">
-                    <div class="feed-dot" style="background: #854f0b"></div>
-                    <div>
-                      <div class="feed-text">
-                        Account suspended — cumulative limit hit
-                      </div>
-                      <div class="feed-time">23 min ago · ako-school-0019</div>
-                    </div>
-                  </div>
-                  <div class="feed-item">
-                    <div class="feed-dot" style="background: #3c3489"></div>
-                    <div>
-                      <div class="feed-text">
-                        KYC upgraded — Tier 1 → Tier 2
-                      </div>
-                      <div class="feed-time">1 hr ago · Ngozi Eze</div>
+                      <div class="feed-text" style="color:var(--color-text-tertiary)">Connect API to load live events</div>
                     </div>
                   </div>
                 </div>
@@ -1182,36 +1150,19 @@
             </div>
             <div class="card">
               <div class="card-label">Rule Execution Summary</div>
-              <div style="display: flex; gap: 24px; margin-bottom: 8px">
-                <span
-                  style="font-size: 12px; color: var(--color-text-secondary)"
-                  ><span style="color: #3b6d11; font-weight: 500">8,078</span>
-                  succeeded</span
-                >
-                <span
-                  style="font-size: 12px; color: var(--color-text-secondary)"
-                  ><span style="color: #854f0b; font-weight: 500">184</span>
-                  pending</span
-                >
-                <span
-                  style="font-size: 12px; color: var(--color-text-secondary)"
-                  ><span style="color: #a32d2d; font-weight: 500">42</span>
-                  failed</span
-                >
+              <div style="display: flex; gap: 24px; margin-bottom: 8px" id="exec-summary-counts">
+                <span style="font-size: 12px; color: var(--color-text-secondary)">
+                  <span style="color: #3b6d11; font-weight: 500" id="exec-completed">—</span> succeeded
+                </span>
+                <span style="font-size: 12px; color: var(--color-text-secondary)">
+                  <span style="color: #854f0b; font-weight: 500" id="exec-pending">—</span> pending
+                </span>
+                <span style="font-size: 12px; color: var(--color-text-secondary)">
+                  <span style="color: #a32d2d; font-weight: 500" id="exec-failed">—</span> failed
+                </span>
               </div>
-              <div class="exec-bar">
-                <div
-                  class="exec-seg"
-                  style="flex: 8078; background: #3b6d11"
-                ></div>
-                <div
-                  class="exec-seg"
-                  style="flex: 184; background: #ef9f27"
-                ></div>
-                <div
-                  class="exec-seg"
-                  style="flex: 42; background: #a32d2d"
-                ></div>
+              <div class="exec-bar" id="exec-bar">
+                <div class="exec-seg" style="flex: 1; background: var(--color-border-tertiary)"></div>
               </div>
             </div>
           </div>
@@ -1310,27 +1261,30 @@
                 <button class="btn-secondary" onclick="loadAccounts()">
                   <i class="ti ti-refresh"></i> Refresh
                 </button>
-                <button class="btn-primary">
+                <button class="btn-primary" onclick="openProvisionAccount()">
                   <i class="ti ti-plus"></i> Provision Account
                 </button>
               </div>
             </div>
-            <div id="accounts-not-live" class="not-live-banner">
-              <i class="ti ti-clock"></i> Accounts API is available in Phase 4
-              of the build. Static demo data shown below.
+            <div id="accounts-not-live" class="not-live-banner" style="display:none">
+              <i class="ti ti-alert-triangle"></i> <span id="accounts-not-live-msg">Connect API to load accounts.</span>
+            </div>
+            <div id="accounts-loading" style="display:none;text-align:center;padding:40px">
+              <div class="spinner"></div>
+              <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading accounts…</div>
             </div>
             <div class="three-col">
               <div class="metric-card">
                 <div class="metric-label">Total Inflows</div>
-                <div class="metric-val">₦2.4B</div>
+                <div class="metric-val" id="acct-total-inflows">—</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">Suspended</div>
-                <div class="metric-val" style="color: #854f0b">211</div>
+                <div class="metric-val" id="acct-suspended" style="color: #854f0b">—</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">Rules Bound</div>
-                <div class="metric-val">142</div>
+                <div class="metric-val" id="acct-rules-bound">—</div>
               </div>
             </div>
             <div class="card" style="padding: 0; overflow: hidden">
@@ -1445,200 +1399,35 @@
           <div class="screen" id="screen-rules">
             <div class="page-head">
               <div>
-                <div class="page-title">Rule Builder</div>
-                <div class="page-sub">
-                  Define programmable triggers and actions for virtual accounts
-                </div>
+                <div class="page-title">Rules</div>
+                <div class="page-sub" id="rules-sub">Programmable triggers and actions for virtual accounts</div>
               </div>
-              <div style="display: flex; gap: 8px; align-items: center">
-                <div class="toggle-pill">
-                  <div class="toggle-opt on" onclick="setToggle(this)">
-                    Sequential
-                  </div>
-                  <div class="toggle-opt" onclick="setToggle(this)">
-                    Parallel
-                  </div>
-                </div>
-                <button class="btn-primary">
-                  <i class="ti ti-plus"></i> Add Rule
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn-secondary" onclick="loadRules()">
+                  <i class="ti ti-refresh"></i> Refresh
                 </button>
               </div>
             </div>
-            <div class="not-live-banner">
-              <i class="ti ti-clock"></i> Rule management API available in Phase
-              5. Showing demo rule set for ajo-amaka-jan.
+            <div class="not-live-banner" id="rules-not-live" style="display:none">
+              <i class="ti ti-alert-triangle"></i> <span id="rules-error-msg">Connect API to load rules.</span>
             </div>
-            <div class="two-col" style="gap: 14px; align-items: start">
-              <div>
-                <div class="card-label" style="margin-bottom: 10px">
-                  Active rules — ajo-amaka-jan
-                </div>
-                <div class="rule-card">
-                  <div class="rule-header">
-                    <span class="priority-badge">#1</span
-                    ><span
-                      style="
-                        font-size: 12px;
-                        color: var(--color-text-primary);
-                        flex: 1;
-                        font-weight: 500;
-                      "
-                      >Savings target gate</span
-                    ><span class="badge badge-active">ACTIVE</span>
-                  </div>
-                  <div class="rule-body">
-                    <div class="rule-row">
-                      <span class="rule-tag rule-when">WHEN</span
-                      ><select class="rule-select">
-                        <option>Cumulative Amount</option>
-                        <option>Payment Amount</option></select
-                      ><span class="op-tag">≥</span
-                      ><input class="rule-val" value="₦500,000" />
-                    </div>
-                    <div class="rule-row" style="margin-top: 8px">
-                      <span class="rule-tag rule-then">THEN</span>
-                      <div class="action-card">
-                        <i class="ti ti-lock"></i> Suspend Account
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="rule-card">
-                  <div class="rule-header">
-                    <span class="priority-badge">#2</span
-                    ><span
-                      style="
-                        font-size: 12px;
-                        color: var(--color-text-primary);
-                        flex: 1;
-                        font-weight: 500;
-                      "
-                      >High-value alert</span
-                    ><span class="badge badge-active">ACTIVE</span>
-                  </div>
-                  <div class="rule-body">
-                    <div class="rule-row">
-                      <span class="rule-tag rule-when">WHEN</span
-                      ><select class="rule-select">
-                        <option>Payment Amount</option>
-                        <option>Cumulative Amount</option></select
-                      ><span class="op-tag">≥</span
-                      ><input class="rule-val" value="₦50,000" />
-                    </div>
-                    <div class="rule-row" style="margin-top: 8px">
-                      <span class="rule-tag rule-then">THEN</span>
-                      <div class="action-card">
-                        <i class="ti ti-webhook"></i> Send Webhook
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="rule-card">
-                  <div class="rule-header">
-                    <span class="priority-badge">#3</span
-                    ><span
-                      style="
-                        font-size: 12px;
-                        color: var(--color-text-primary);
-                        flex: 1;
-                        font-weight: 500;
-                      "
-                      >Audit on any credit</span
-                    ><span class="badge badge-active">ACTIVE</span>
-                  </div>
-                  <div class="rule-body">
-                    <div class="rule-row">
-                      <span class="rule-tag rule-when">WHEN</span
-                      ><select class="rule-select">
-                        <option>Payment Received</option></select
-                      ><span class="op-tag">=</span
-                      ><input class="rule-val" value="Any" />
-                    </div>
-                    <div class="rule-row" style="margin-top: 8px">
-                      <span class="rule-tag rule-then">THEN</span>
-                      <div class="action-card">
-                        <i class="ti ti-file-text"></i> Create Audit Log
-                      </div>
-                    </div>
-                  </div>
+            <div id="rules-loading" style="display:none;text-align:center;padding:40px">
+              <div class="spinner"></div>
+              <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading rules…</div>
+            </div>
+            <!-- Two-column: account selector left, rule detail right -->
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start" id="rules-body">
+              <!-- Account list -->
+              <div class="card" style="padding:0;overflow:hidden">
+                <div style="padding:10px 12px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--color-text-tertiary);border-bottom:.5px solid var(--color-border-tertiary)">Accounts</div>
+                <div id="rules-account-list">
+                  <div style="padding:16px;font-size:12px;color:var(--color-text-tertiary);text-align:center">Connect API to load</div>
                 </div>
               </div>
-              <div>
-                <div
-                  style="
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 10px;
-                  "
-                >
-                  <div class="card-label">Live preview</div>
-                  <div class="live-tag">
-                    <div class="live-dot"></div>
-                    Simulating
-                  </div>
-                </div>
-                <div class="card" style="margin-bottom: 10px">
-                  <div class="card-label" style="margin-bottom: 8px">
-                    Simulate payment
-                  </div>
-                  <div class="sc-row">
-                    <div class="sc-label">Account</div>
-                    <div class="sc-val tbl-mono">ajo-amaka-jan</div>
-                  </div>
-                  <div class="sc-row">
-                    <div class="sc-label">Amount</div>
-                    <div class="sc-val">₦150,000</div>
-                  </div>
-                  <div class="sc-row">
-                    <div class="sc-label">Cumulative before</div>
-                    <div class="sc-val">₦350,000</div>
-                  </div>
-                  <div class="sc-row">
-                    <div class="sc-label">Cumulative after</div>
-                    <div
-                      class="sc-val"
-                      style="color: #0f6e56; font-weight: 500"
-                    >
-                      ₦500,000 ✓
-                    </div>
-                  </div>
-                </div>
-                <div class="console-wrap">
-                  <div class="console-label">RULE EVALUATION LOG</div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:32</span
-                    ><span class="c-dim">→</span
-                    ><span class="c-key">Rule #1</span
-                    ><span class="c-dim">eval</span>
-                  </div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:32</span
-                    ><span class="c-dim"> cumulative</span
-                    ><span class="c-num">500000</span
-                    ><span class="c-ok">≥ 500000 ✓</span>
-                  </div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:32</span
-                    ><span class="c-ok"> MATCH — executing action</span>
-                  </div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:32</span
-                    ><span class="c-warn"> suspend_account → PENDING</span>
-                  </div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:33</span
-                    ><span class="c-ok"> account_status = SUSPENDED</span>
-                  </div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:33</span
-                    ><span class="c-key">Rule #2</span
-                    ><span class="c-ok">eval amount 150000 ≥ 50000 ✓</span>
-                  </div>
-                  <div class="console-line">
-                    <span class="c-ts">09:14:33</span
-                    ><span class="c-ok"> webhook_sent → 200 OK</span>
-                  </div>
+              <!-- Rule detail panel -->
+              <div id="rules-detail-panel">
+                <div class="card" style="text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px">
+                  Select an account to view its rules
                 </div>
               </div>
             </div>
@@ -1649,40 +1438,32 @@
             <div class="page-head">
               <div>
                 <div class="page-title">Ledger</div>
-                <div class="page-sub">All inflows · Reconciliation view</div>
+                <div class="page-sub" id="ledger-sub">All inflows · Reconciliation view</div>
               </div>
-              <button class="btn-secondary">
-                <i class="ti ti-filter"></i> Filter
+              <button class="btn-secondary" onclick="loadLedger()">
+                <i class="ti ti-refresh"></i> Refresh
               </button>
             </div>
-            <div class="not-live-banner">
-              <i class="ti ti-clock"></i> Ledger API available in Phase 6.
-              Static demo data shown.
+            <div id="ledger-not-live" class="not-live-banner" style="display:none">
+              <i class="ti ti-alert-triangle"></i> <span id="ledger-error-msg">Connect API to load ledger.</span>
             </div>
             <div class="three-col">
               <div class="metric-card">
                 <div class="metric-label">Total Inflows</div>
-                <div class="metric-val">₦2.4B</div>
+                <div class="metric-val" id="ledger-total">—</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">Matched</div>
-                <div class="metric-val" style="color: #3b6d11">18,204</div>
+                <div class="metric-val" style="color: #3b6d11" id="ledger-matched">—</div>
               </div>
               <div class="metric-card">
-                <div class="metric-label">Unmatched / Flagged</div>
-                <div class="metric-val" style="color: #a32d2d">304</div>
+                <div class="metric-label">Unmatched / Pending</div>
+                <div class="metric-val" style="color: #a32d2d" id="ledger-unmatched">—</div>
               </div>
             </div>
-            <div class="filter-bar">
-              <div class="filter-chip on" onclick="filterChip(this)">All</div>
-              <div class="filter-chip" onclick="filterChip(this)">Today</div>
-              <div class="filter-chip" onclick="filterChip(this)">
-                This week
-              </div>
-              <div class="filter-chip" onclick="filterChip(this)">
-                Unmatched
-              </div>
-              <div class="filter-chip" onclick="filterChip(this)">Flagged</div>
+            <div id="ledger-loading" style="display:none;text-align:center;padding:40px">
+              <div class="spinner"></div>
+              <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading ledger…</div>
             </div>
             <div class="card" style="padding: 0; overflow: hidden">
               <table class="tbl">
@@ -1696,87 +1477,8 @@
                     <th>Date</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr>
-                    <td style="font-weight: 500; font-size: 12px">₦150,000</td>
-                    <td style="font-size: 12px">Emeka Obi</td>
-                    <td
-                      style="
-                        font-size: 11px;
-                        color: var(--color-text-secondary);
-                      "
-                    >
-                      AJO SAVINGS CONTRIBUTION
-                    </td>
-                    <td class="tbl-mono">ako-escrow-0042</td>
-                    <td><span class="badge badge-active">MATCHED</span></td>
-                    <td
-                      style="font-size: 11px; color: var(--color-text-tertiary)"
-                    >
-                      Jun 19 · 09:14
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: 500; font-size: 12px">₦50,000</td>
-                    <td style="font-size: 12px">Ngozi Eze</td>
-                    <td
-                      style="
-                        font-size: 11px;
-                        color: var(--color-text-secondary);
-                      "
-                    >
-                      SCHOOL FEES GREENFIELD TERM 3
-                    </td>
-                    <td class="tbl-mono">ako-school-0019</td>
-                    <td><span class="badge badge-active">MATCHED</span></td>
-                    <td
-                      style="font-size: 11px; color: var(--color-text-tertiary)"
-                    >
-                      Jun 19 · 08:55
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: 500; font-size: 12px">₦800,000</td>
-                    <td style="font-size: 12px">Fola Adeyemi</td>
-                    <td
-                      style="
-                        font-size: 11px;
-                        color: var(--color-text-secondary);
-                      "
-                    >
-                      GOODS PAYMENT REF 88391
-                    </td>
-                    <td class="tbl-mono">ako-mkt-vend-07</td>
-                    <td><span class="badge badge-flagged">FLAGGED</span></td>
-                    <td
-                      style="font-size: 11px; color: var(--color-text-tertiary)"
-                    >
-                      Jun 19 · 08:31
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: 500; font-size: 12px">
-                      ₦1,200,000
-                    </td>
-                    <td style="font-size: 12px">Chidi Nwosu</td>
-                    <td
-                      style="
-                        font-size: 11px;
-                        color: var(--color-text-secondary);
-                      "
-                    >
-                      TRANSFER — NO REF
-                    </td>
-                    <td class="tbl-mono">ako-coop-fola-01</td>
-                    <td>
-                      <span class="badge badge-suspended">UNMATCHED</span>
-                    </td>
-                    <td
-                      style="font-size: 11px; color: var(--color-text-tertiary)"
-                    >
-                      Jun 18 · 14:45
-                    </td>
-                  </tr>
+                <tbody id="ledger-tbody">
+                  <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">Connect API to load ledger entries.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1789,79 +1491,19 @@
                 <div class="page-title">Audit Trail</div>
                 <div class="page-sub" id="audit-sub">Immutable event log</div>
               </div>
-              <button class="btn-secondary">
-                <i class="ti ti-download"></i> Export CSV
+              <button class="btn-secondary" onclick="loadAudit()">
+                <i class="ti ti-refresh"></i> Refresh
               </button>
             </div>
-            <div class="not-live-banner" id="audit-not-live">
-              <i class="ti ti-clock"></i> Full audit API available in Phase 6.
-              Connect API to load live events.
+            <div class="not-live-banner" id="audit-not-live" style="display:none">
+              <i class="ti ti-alert-triangle"></i> <span id="audit-error-msg">Connect API to load audit events.</span>
+            </div>
+            <div id="audit-loading" style="display:none;text-align:center;padding:40px">
+              <div class="spinner"></div>
+              <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading audit events…</div>
             </div>
             <div class="card" id="audit-timeline">
-              <div class="timeline-item">
-                <div class="timeline-line-wrap">
-                  <div class="tl-dot" style="background: #a32d2d"></div>
-                  <div class="tl-line"></div>
-                </div>
-                <div class="timeline-content">
-                  <div class="tl-action">Account Suspended</div>
-                  <div class="tl-meta">
-                    Jun 19, 2025 · 09:14:33 UTC · Actor: rule-engine ·
-                    ajo-amaka-jan
-                  </div>
-                  <div class="tl-code">
-                    "rulesExecuted": ["savings_target_gate"] · "cumulative":
-                    500000
-                  </div>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-line-wrap">
-                  <div class="tl-dot" style="background: #185fa5"></div>
-                  <div class="tl-line"></div>
-                </div>
-                <div class="timeline-content">
-                  <div class="tl-action">Payment Received</div>
-                  <div class="tl-meta">
-                    Jun 19, 2025 · 09:14:32 UTC · Actor: nomba-gateway ·
-                    ajo-amaka-jan
-                  </div>
-                  <div class="tl-code">
-                    "amountKobo": 15000000 · "sender": "Emeka Obi"
-                  </div>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-line-wrap">
-                  <div class="tl-dot" style="background: #3c3489"></div>
-                  <div class="tl-line"></div>
-                </div>
-                <div class="timeline-content">
-                  <div class="tl-action">KYC Upgraded</div>
-                  <div class="tl-meta">
-                    Jun 19, 2025 · 07:30:00 UTC · Actor: ops-team ·
-                    cust_ngozi_003
-                  </div>
-                  <div class="tl-code">
-                    "from": "tier_1" · "to": "tier_2" · "verifiedBy": "Dojah"
-                  </div>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-line-wrap">
-                  <div class="tl-dot" style="background: #3b6d11"></div>
-                </div>
-                <div class="timeline-content">
-                  <div class="tl-action">Customer Created</div>
-                  <div class="tl-meta">
-                    Jun 18, 2025 · 14:58:11 UTC · Actor: api-key:ako_live_a3f8c2
-                  </div>
-                  <div class="tl-code">
-                    "customerId": "cust_fola_004" · "name": "Fola Adeyemi" ·
-                    "kyc": "TIER_0"
-                  </div>
-                </div>
-              </div>
+              <div style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">Connect API to load live audit events.</div>
             </div>
           </div>
 
@@ -1879,10 +1521,8 @@
                 API Connected
               </div>
             </div>
-            <div id="demo-not-live" class="not-live-banner">
-              <i class="ti ti-clock"></i> Live demos require Phase 6 (<code
-                >POST /demo/simulate-inflow</code
-              >). Until then, demos run the scripted simulation below.
+            <div id="demo-not-live" class="not-live-banner" style="display:none">
+              <i class="ti ti-clock"></i> Live demos require <code>POST /demo/simulate-inflow</code>. Connect API to enable live demos.
             </div>
             <div class="two-col" style="align-items: start; gap: 14px">
               <div>
@@ -2373,6 +2013,162 @@
       </div>
     </div>
 
+    <!-- ── Provision Account Modal ───────────────────────────────────────── -->
+    <div
+      id="provision-account-modal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        style="
+          background: #fff;
+          border-radius: 12px;
+          padding: 24px;
+          width: 500px;
+          max-width: 92vw;
+          max-height: 88vh;
+          overflow-y: auto;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        "
+      >
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+          "
+        >
+          <div
+            style="
+              font-size: 14px;
+              font-weight: 500;
+              color: var(--color-text-primary);
+            "
+          >
+            Provision Account
+          </div>
+          <button
+            onclick="closeProvisionAccount()"
+            style="
+              background: none;
+              border: none;
+              cursor: pointer;
+              font-size: 18px;
+              color: var(--color-text-tertiary);
+            "
+          >
+            ✕
+          </button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px">
+          <div>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Account Ref *</label>
+            <input
+              id="pa-ref"
+              type="text"
+              placeholder="e.g. ajo-amaka-jan-2026"
+              style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--font-mono);outline:none"
+            />
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Account Name *</label>
+            <input
+              id="pa-name"
+              type="text"
+              placeholder="e.g. Amaka Okonkwo — Ajo Savings"
+              style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:13px;font-family:var(--font-sans);outline:none"
+            />
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Customer ID <span style="font-weight:400">(optional — leave blank for treasury bucket)</span></label>
+            <input
+              id="pa-customer"
+              type="text"
+              placeholder="cus_…"
+              style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--font-mono);outline:none"
+            />
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:4px">Execution Model</label>
+            <select id="pa-exec-model" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
+              <option value="SEQUENTIAL">SEQUENTIAL — first matching rule fires</option>
+              <option value="PARALLEL">PARALLEL — all matching rules fire</option>
+            </select>
+          </div>
+          <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:12px;margin-top:2px">
+            <div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:8px;letter-spacing:0.05em;text-transform:uppercase">Rule (required — at least one)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+              <div>
+                <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Trigger</label>
+                <select id="pa-rule-trigger" onchange="paUpdateConditionHint()" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
+                  <option value="inflow_received">inflow_received</option>
+                  <option value="custom_event">custom_event</option>
+                  <option value="time_elapsed">time_elapsed</option>
+                  <option value="tier_changed">tier_changed</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Action</label>
+                <select id="pa-rule-action" onchange="paTogglePayload()" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
+                  <option value="suspend_account">suspend_account</option>
+                  <option value="notify_webhook">notify_webhook — needs webhook URL</option>
+                  <option value="release_funds">release_funds — needs destination + amount</option>
+                  <option value="flag_for_review">flag_for_review</option>
+                  <option value="reactivate_account">reactivate_account</option>
+                  <option value="expire_account">expire_account</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-bottom:8px">
+              <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Condition JSON <span id="pa-condition-hint" style="color:#6e7781"></span></label>
+              <textarea
+                id="pa-rule-condition"
+                rows="2"
+                placeholder='{"amount_gte": 5000000}'
+                style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical"
+              ></textarea>
+            </div>
+            <!-- Payload — only shown for notify_webhook and release_funds -->
+            <div id="pa-payload-wrap" style="display:none">
+              <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Payload JSON <span id="pa-payload-hint" style="color:#6e7781"></span></label>
+              <textarea
+                id="pa-rule-payload"
+                rows="2"
+                placeholder=''
+                style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical"
+              ></textarea>
+            </div>
+          </div>
+          <div
+            id="pa-error"
+            style="
+              display: none;
+              background: #fcebeb;
+              border: 0.5px solid #a32d2d;
+              border-radius: 6px;
+              padding: 8px 12px;
+              font-size: 12px;
+              color: #a32d2d;
+            "
+          ></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+            <button class="btn-secondary" onclick="closeProvisionAccount()">Cancel</button>
+            <button class="btn-primary" id="pa-submit" onclick="submitProvisionAccount()">
+              <i class="ti ti-plus"></i> Provision
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <script>
       /* ── State ──────────────────────────────────────────────────────────────── */
@@ -2380,6 +2176,7 @@
       let API_KEY = '';
       let API_LIVE = false; // true once we've gotten a 200 from the server
       let DEMO_READY = false; // true when POST /demo/simulate-inflow is available
+      let _accountsCache = null; // shared accounts cache — avoids duplicate fetches on connect
 
       /* ── API helpers ──────────────────────────────────────────────────────── */
       async function apiFetch(path, opts = {}) {
@@ -2448,9 +2245,17 @@
             'inline-flex';
           // Check if demo/simulate-inflow is available
           checkDemoReady();
-          // Load data
+          // Single accounts fetch shared by dashboard, accounts, ledger, audit
+          _accountsCache = null;
+          const accData = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = accData.data || [];
+          // Load all screens from cache
           loadCustomers();
-          refreshDashboard();
+          loadAccountsFromCache();
+          loadLedgerFromCache();
+          loadAuditFromCache();
+          loadRules();
+          refreshDashboardFromCache();
         } catch (e) {
           dot.className = 'cfg-dot err';
           status.textContent = `Error: ${e.message}`;
@@ -2461,6 +2266,7 @@
       function disconnectApi() {
         API_LIVE = false;
         API_KEY = '';
+        _accountsCache = null;
         document.getElementById('cfg-inputs').style.display = 'flex';
         document.getElementById('cfg-connected').style.display = 'none';
         document.getElementById('cfg-key').value = '';
@@ -2471,49 +2277,140 @@
       }
 
       async function checkDemoReady() {
-        // Try a dummy call — 403 DEMO_MODE_ONLY means endpoint exists but mock mode off, which is fine
-        // 404 means Phase 6 not deployed yet
         try {
           const res = await fetch(`${API_BASE}/demo/simulate-inflow`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-admin-secret': 'probe',
+              'x-admin-secret': document.getElementById('cfg-admin-secret')?.value || 'probe',
             },
-            body: JSON.stringify({}),
+            body: JSON.stringify({ accountNumber: 'probe', amountKobo: 1 }),
           });
-          if (res.status !== 404) {
-            DEMO_READY = true;
-            document.getElementById('demo-not-live').style.display = 'none';
-            document.getElementById('demo-api-tag').style.display =
-              'inline-flex';
-            document.getElementById('nav-live-demo').style.display =
-              'inline-flex';
-            // Show live config for all demo cards that have a -live-config element
-            document.querySelectorAll('[id$="-live-config"]').forEach((el) => {
-              el.style.display = 'block';
-            });
+          if (res.status === 404) {
+            // Endpoint doesn't exist — show the not-live banner
+            document.getElementById('demo-not-live').style.display = 'flex';
+            return;
           }
-        } catch (_) {}
+          // Any other response (400 validation, 401 auth, 403 disabled, 200 ok)
+          // means the endpoint is deployed
+          DEMO_READY = true;
+          document.getElementById('demo-not-live').style.display = 'none';
+          document.getElementById('demo-api-tag').style.display = 'inline-flex';
+          document.getElementById('nav-live-demo').style.display = 'inline-flex';
+          document.querySelectorAll('[id$="-live-config"]').forEach((el) => {
+            el.style.display = 'block';
+          });
+        } catch (_) {
+          // Network error — leave banner hidden, demos will fall back to scripted mode
+        }
       }
 
       /* ── Dashboard ──────────────────────────────────────────────────────── */
       async function refreshDashboard() {
         if (!API_LIVE || !API_KEY) return;
+        // Re-fetch accounts to refresh cache, then update all screens
+        const accData = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+        _accountsCache = accData.data || [];
+        await refreshDashboardFromCache();
+        loadAccountsFromCache();
+        loadLedgerFromCache();
+        loadAuditFromCache();
+      }
+
+      async function refreshDashboardFromCache() {
+        if (!API_LIVE || !API_KEY) return;
+        const accounts = _accountsCache || [];
+
+        // Total Customers (still needs its own call — different endpoint)
         try {
-          const data = await apiFetch('/customers?limit=1&page=1');
-          const total = data.meta?.total ?? data.pagination?.total ?? '?';
-          document.getElementById('m-customers').textContent =
-            Number(total).toLocaleString();
-          document.getElementById('m-customers-sub').textContent =
-            `${total} total customers`;
+          const data = await apiFetch('/customers?limit=1');
+          const total = data.meta?.total ?? data.pagination?.total ?? data.data?.length ?? '?';
+          document.getElementById('m-customers').textContent = Number(total).toLocaleString();
+          document.getElementById('m-customers-sub').textContent = `${total} total customers`;
         } catch (e) {
           document.getElementById('m-customers').textContent = 'Err';
           document.getElementById('m-customers-sub').textContent = e.message;
         }
+
+        // Metrics from cached accounts
+        const active = accounts.filter((a) => a.status === 'ACTIVE').length;
+        const suspended = accounts.filter((a) => a.status === 'SUSPENDED').length;
+        const totalRules = accounts.reduce((s, a) => s + (a.rules?.length ?? 0), 0);
+        const totalInflowKobo = accounts.reduce((s, a) => s + Number(a.totalAmountKobo || 0), 0);
+        const fmtNgn = (k) => k >= 100_000_00
+          ? `₦${(k / 100_000_000).toFixed(1)}B`
+          : `₦${(k / 100).toLocaleString()}`;
+
+        document.getElementById('m-accounts').textContent = active.toLocaleString();
+        document.getElementById('m-accounts-sub').textContent = `${accounts.length} total · ${suspended} suspended`;
+        document.getElementById('m-rules').textContent = totalRules.toLocaleString();
+        document.getElementById('m-rules-sub').textContent = `across ${accounts.length} accounts`;
+        document.getElementById('m-inflows').textContent = fmtNgn(totalInflowKobo);
+        document.getElementById('m-inflows-sub').textContent = 'total received';
+        document.getElementById('m-executions').textContent = '—';
+        document.getElementById('m-executions-sub').textContent = '';
+        document.getElementById('m-audit').textContent = '—';
+        document.getElementById('m-audit-sub').textContent = 'immutable log';
+
+        // Accounts screen metrics
+        document.getElementById('acct-total-inflows').textContent = fmtNgn(totalInflowKobo);
+        document.getElementById('acct-suspended').textContent = suspended.toLocaleString();
+        document.getElementById('acct-rules-bound').textContent = totalRules.toLocaleString();
+
+        // Activity feed — most recently created accounts
+        if (accounts.length > 0) {
+          const sorted = [...accounts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          document.getElementById('activity-feed').innerHTML = sorted.slice(0, 5).map((a) => `
+            <div class="feed-item">
+              <div class="feed-dot" style="background:#185fa5"></div>
+              <div>
+                <div class="feed-text">Account provisioned — <strong>${escHtml(a.accountRef)}</strong></div>
+                <div class="feed-time">${a.createdAt ? timeAgo(new Date(a.createdAt)) : ''} · ${escHtml(a.status || '')}</div>
+              </div>
+            </div>`).join('');
+        }
+
+        // Exec bar — placeholder until a real execution stats endpoint exists
+        const completed = accounts.filter(a => a.status === 'ACTIVE').length;
+        const failed = accounts.filter(a => a.status === 'CLOSED').length;
+        const pending = accounts.filter(a => a.status === 'SUSPENDED').length;
+        if (completed + failed + pending > 0) {
+          document.getElementById('exec-completed').textContent = completed;
+          document.getElementById('exec-pending').textContent = pending;
+          document.getElementById('exec-failed').textContent = failed;
+          document.getElementById('exec-bar').innerHTML = `
+            <div class="exec-seg" style="flex:${Math.max(completed,1)};background:#3b6d11"></div>
+            <div class="exec-seg" style="flex:${Math.max(pending,1)};background:#ef9f27"></div>
+            <div class="exec-seg" style="flex:${Math.max(failed,1)};background:#a32d2d"></div>`;
+        }
+
+        // Chart — build daily buckets from account createdAt dates as a proxy
+        const dailyMap = {};
+        for (let i = 0; i < 14; i++) {
+          const d = new Date(); d.setDate(d.getDate() - (13 - i));
+          dailyMap[d.toDateString()] = 0;
+        }
+        for (const a of accounts) {
+          const key = new Date(a.createdAt).toDateString();
+          if (dailyMap[key] !== undefined) dailyMap[key]++;
+        }
+        const vals = Object.values(dailyMap);
+        if (vals.some(v => v > 0) && typeof inflowChartInstance !== 'undefined') {
+          inflowChartInstance.data.datasets[0].data = vals;
+          inflowChartInstance.options.plugins.tooltip.callbacks.label = (v) => `${v.raw} accounts`;
+          inflowChartInstance.options.scales.y.ticks.callback = (v) => v;
+          inflowChartInstance.update();
+        }
       }
-    </script>
-    <script>
+
+      function timeAgo(date) {
+        const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+        if (secs < 60) return `${secs}s ago`;
+        if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+        if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+        return `${Math.floor(secs / 86400)}d ago`;
+      }
+
       /* ── Customers (LIVE) ─────────────────────────────────────────────── */
       async function loadCustomers() {
         if (!API_LIVE || !API_KEY) {
@@ -2665,35 +2562,42 @@
         }
       }
 
-      /* ── Accounts (stub — Phase 4) ───────────────────────────────────── */
+      /* ── Accounts (LIVE) ───────────────────────────────────────────────── */
       async function loadAccounts() {
         if (!API_LIVE || !API_KEY) return;
+        // Re-fetch and update cache
+        document.getElementById('accounts-loading').style.display = 'block';
+        document.getElementById('accounts-not-live').style.display = 'none';
         try {
-          const data = await apiFetch('/accounts');
-          const accounts = data.data || [];
-          document.getElementById('accounts-sub').textContent =
-            `${data.pagination?.total ?? accounts.length} accounts · live data`;
-          document.getElementById('accounts-not-live').style.display = 'none';
-          const tbody = document.getElementById('accounts-tbody');
-          tbody.innerHTML =
-            accounts
-              .map(
-                (a) => `<tr>
-      <td class="tbl-mono">${escHtml(a.accountRef)}</td>
-      <td class="tbl-mono">${escHtml(a.accountNumber || '—')}</td>
-      <td style="font-size:12px">${escHtml(a.customer?.displayName || '—')}</td>
-      <td>${statusBadge(a.status)}</td>
-      <td style="font-size:12px;font-weight:500;color:#0F6E56">${a.rules?.length ?? 0}</td>
-      <td style="font-size:12px">₦${((a.totalAmountKobo || 0) / 100).toLocaleString()}</td>
-      <td style="color:var(--color-text-tertiary);font-size:11px">${a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '—'}</td>
-    </tr>`,
-              )
-              .join('') ||
-            '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">No accounts found.</td></tr>';
+          const data = await apiFetch('/accounts?limit=100');
+          _accountsCache = data.data || [];
+          loadAccountsFromCache();
         } catch (e) {
-          document.getElementById('accounts-sub').textContent =
-            'Accounts API not yet available (Phase 4)';
+          document.getElementById('accounts-loading').style.display = 'none';
+          document.getElementById('accounts-not-live').style.display = 'flex';
+          document.getElementById('accounts-not-live-msg').textContent = `Failed to load accounts: ${e.message}`;
         }
+      }
+
+      function loadAccountsFromCache() {
+        const accounts = _accountsCache || [];
+        document.getElementById('accounts-loading').style.display = 'none';
+        document.getElementById('accounts-not-live').style.display = 'none';
+        document.getElementById('accounts-sub').textContent =
+          `${accounts.length} accounts · live data`;
+        const tbody = document.getElementById('accounts-tbody');
+        tbody.innerHTML =
+          accounts.length === 0
+            ? '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">No accounts yet. Use "Provision Account" to create your first virtual account.</td></tr>'
+            : accounts.map((a) => `<tr>
+                <td class="tbl-mono">${escHtml(a.accountRef)}</td>
+                <td class="tbl-mono">${escHtml(a.accountNumber || '—')}</td>
+                <td style="font-size:12px">${escHtml(a.customer?.displayName || '—')}</td>
+                <td>${statusBadge(a.status)}</td>
+                <td style="font-size:12px;font-weight:500;color:#0F6E56">${a.rules?.length ?? 0}</td>
+                <td style="font-size:12px">₦${((Number(a.totalAmountKobo) || 0) / 100).toLocaleString()}</td>
+                <td style="color:var(--color-text-tertiary);font-size:11px">${a.createdAt ? new Date(a.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+              </tr>`).join('');
       }
 
       function statusBadge(s) {
@@ -2713,6 +2617,313 @@
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;');
+      }
+
+      /* ── Ledger (LIVE) ───────────────────────────────────────────────── */
+      async function loadLedger() {
+        if (!API_LIVE || !API_KEY) return;
+        // Re-fetch accounts if cache is empty, then render
+        if (!_accountsCache) {
+          const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = d.data || [];
+        }
+        await loadLedgerFromCache();
+      }
+
+      async function loadLedgerFromCache() {
+        if (!API_LIVE || !API_KEY) return;
+        document.getElementById('ledger-loading').style.display = 'block';
+        document.getElementById('ledger-not-live').style.display = 'none';
+        const accounts = _accountsCache || [];
+        try {
+          let allEntries = [];
+          let totalKobo = 0, matched = 0, unmatched = 0;
+          // Sequential fetches for first 5 accounts to stay well under rate limit
+          for (const a of accounts.slice(0, 5)) {
+            try {
+              const ledger = await apiFetch(`/accounts/${a.accountRef}/ledger?limit=10`);
+              const entries = ledger.data || [];
+              allEntries = allEntries.concat(entries.map(e => ({ ...e, accountRef: a.accountRef })));
+              totalKobo += entries.reduce((s, e) => s + Number(e.amountKobo || 0), 0);
+              matched += entries.filter(e => e.reconciliationStatus === 'MATCHED').length;
+              unmatched += entries.filter(e => e.reconciliationStatus !== 'MATCHED').length;
+            } catch (_) {}
+          }
+
+          document.getElementById('ledger-loading').style.display = 'none';
+          document.getElementById('ledger-sub').textContent = `${allEntries.length} entries · live data`;
+          const fmtNgn = (k) => k >= 100_000_00 ? `₦${(k / 100_000_000).toFixed(1)}B` : `₦${(k / 100).toLocaleString()}`;
+          document.getElementById('ledger-total').textContent = fmtNgn(totalKobo);
+          document.getElementById('ledger-matched').textContent = matched.toLocaleString();
+          document.getElementById('ledger-unmatched').textContent = unmatched.toLocaleString();
+
+          allEntries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          const reconcBadge = (s) => {
+            if (s === 'MATCHED') return '<span class="badge badge-active">MATCHED</span>';
+            if (s === 'FLAGGED') return '<span class="badge badge-flagged">FLAGGED</span>';
+            return '<span class="badge badge-suspended">PENDING</span>';
+          };
+          document.getElementById('ledger-tbody').innerHTML =
+            allEntries.length === 0
+              ? '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">No ledger entries yet. Simulate an inflow via the Demo Scenarios screen.</td></tr>'
+              : allEntries.slice(0, 50).map(e => `<tr>
+                  <td style="font-weight:500;font-size:12px">₦${(Number(e.amountKobo || 0) / 100).toLocaleString()}</td>
+                  <td style="font-size:12px">${escHtml(e.customerNameSnapshot || '—')}</td>
+                  <td style="font-size:11px;color:var(--color-text-secondary)">${escHtml(e.narration || '—')}</td>
+                  <td class="tbl-mono">${escHtml(e.accountRef || '—')}</td>
+                  <td>${reconcBadge(e.reconciliationStatus)}</td>
+                  <td style="font-size:11px;color:var(--color-text-tertiary)">${e.createdAt ? new Date(e.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                </tr>`).join('');
+        } catch (e) {
+          document.getElementById('ledger-loading').style.display = 'none';
+          document.getElementById('ledger-not-live').style.display = 'flex';
+          document.getElementById('ledger-error-msg').textContent = `Failed to load ledger: ${e.message}`;
+        }
+      }
+
+      /* ── Audit Trail (LIVE via accounts + customers) ────────────────── */
+      async function loadAudit() {
+        if (!API_LIVE || !API_KEY) return;
+        if (!_accountsCache) {
+          const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = d.data || [];
+        }
+        await loadAuditFromCache();
+      }
+
+      async function loadAuditFromCache() {
+        if (!API_LIVE || !API_KEY) return;
+        document.getElementById('audit-loading').style.display = 'block';
+        document.getElementById('audit-not-live').style.display = 'none';
+        try {
+          const accounts = _accountsCache || [];
+          const custData = await apiFetch('/customers?limit=50').catch(() => ({ data: [] }));
+          const customers = custData.data || [];
+
+          const actionColor = (action) => {
+            if (action.includes('CREATED')) return '#3b6d11';
+            if (action.includes('SUSPENDED') || action.includes('CLOSED')) return '#a32d2d';
+            if (action.includes('REACTIVATED') || action.includes('COMPLETED')) return '#3b6d11';
+            if (action.includes('KYC') || action.includes('CUSTOMER')) return '#3c3489';
+            return '#185fa5';
+          };
+
+          let events = [];
+          for (const a of accounts) {
+            events.push({ action: 'ACCOUNT_CREATED', actor: 'api', ref: a.accountRef, ts: a.createdAt, detail: `accountRef: "${a.accountRef}" · status: ${a.status} · rules: ${a.rules?.length ?? 0}` });
+          }
+          for (const c of customers) {
+            events.push({ action: 'CUSTOMER_CREATED', actor: 'api', ref: c.id, ts: c.createdAt, detail: `name: "${c.displayName}" · kyc: ${c.kycTier}` });
+          }
+          events.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+          document.getElementById('audit-loading').style.display = 'none';
+          document.getElementById('audit-sub').textContent = `${events.length} events · live data`;
+          document.getElementById('m-audit').textContent = events.length.toLocaleString();
+          document.getElementById('m-audit-sub').textContent = 'immutable log';
+
+          document.getElementById('audit-timeline').innerHTML =
+            events.length === 0
+              ? '<div style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:12px">No audit events yet.</div>'
+              : events.slice(0, 30).map((ev, i, arr) => `
+                <div class="timeline-item">
+                  <div class="timeline-line-wrap">
+                    <div class="tl-dot" style="background:${actionColor(ev.action)}"></div>
+                    ${i < arr.length - 1 ? '<div class="tl-line"></div>' : ''}
+                  </div>
+                  <div class="timeline-content">
+                    <div class="tl-action">${escHtml(ev.action.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()))}</div>
+                    <div class="tl-meta">${ev.ts ? new Date(ev.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' UTC' : ''} · Actor: ${escHtml(ev.actor)} · ${escHtml(ev.ref || '')}</div>
+                    <div class="tl-code">${escHtml(ev.detail)}</div>
+                  </div>
+                </div>`).join('');
+        } catch (e) {
+          document.getElementById('audit-loading').style.display = 'none';
+          document.getElementById('audit-not-live').style.display = 'flex';
+          document.getElementById('audit-error-msg').textContent = `Failed to load audit: ${e.message}`;
+        }
+      }
+
+      /* ── Rules (LIVE) ───────────────────────────────────────────────── */
+      let _rulesSelectedRef = null;
+
+      async function loadRules() {
+        if (!API_LIVE || !API_KEY) return;
+        document.getElementById('rules-loading').style.display = 'block';
+        document.getElementById('rules-not-live').style.display = 'none';
+        // Reuse cache or re-fetch
+        if (!_accountsCache) {
+          const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = d.data || [];
+        }
+        renderRulesAccountList(_accountsCache);
+        document.getElementById('rules-loading').style.display = 'none';
+        document.getElementById('rules-sub').textContent =
+          `${_accountsCache.length} accounts · ${_accountsCache.reduce((s, a) => s + (a.rules?.length ?? 0), 0)} rules`;
+        // Auto-select first account that has rules
+        const first = _accountsCache.find(a => (a.rules?.length ?? 0) > 0) || _accountsCache[0];
+        if (first) selectRulesAccount(first.accountRef);
+      }
+
+      function renderRulesAccountList(accounts) {
+        const list = document.getElementById('rules-account-list');
+        if (!accounts.length) {
+          list.innerHTML = '<div style="padding:16px;font-size:12px;color:var(--color-text-tertiary);text-align:center">No accounts yet.</div>';
+          return;
+        }
+        list.innerHTML = accounts.map(a => `
+          <div id="rules-acct-${escHtml(a.accountRef)}"
+               onclick="selectRulesAccount('${escHtml(a.accountRef)}')"
+               style="padding:8px 12px;cursor:pointer;border-bottom:.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;gap:2px;transition:background .1s"
+               onmouseover="this.style.background='var(--color-background-secondary)'"
+               onmouseout="this.style.background=this.dataset.selected==='1'?'rgba(15,110,86,.08)':''"
+               data-selected="0">
+            <div style="font-size:11px;font-family:var(--font-mono);color:var(--color-text-primary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(a.accountRef)}</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              ${statusBadge(a.status)}
+              <span style="font-size:10px;color:var(--color-text-tertiary)">${a.rules?.length ?? 0} rule${(a.rules?.length ?? 0) !== 1 ? 's' : ''}</span>
+            </div>
+          </div>`).join('');
+      }
+
+      async function selectRulesAccount(ref) {
+        _rulesSelectedRef = ref;
+        // Highlight selected
+        document.querySelectorAll('[id^="rules-acct-"]').forEach(el => {
+          el.style.background = '';
+          el.dataset.selected = '0';
+        });
+        const sel = document.getElementById(`rules-acct-${ref}`);
+        if (sel) { sel.style.background = 'rgba(15,110,86,.08)'; sel.dataset.selected = '1'; }
+
+        const panel = document.getElementById('rules-detail-panel');
+        panel.innerHTML = '<div class="card" style="text-align:center;padding:32px"><div class="spinner"></div><div style="font-size:12px;color:var(--color-text-tertiary);margin-top:10px">Loading…</div></div>';
+
+        try {
+          const state = await apiFetch(`/accounts/${ref}/state`);
+          const account = state.account || state;
+          const rules = account.rules || [];
+          const execModel = account.executionModel || 'SEQUENTIAL';
+
+          const actionIcon = (action) => {
+            const icons = {
+              RELEASE_FUNDS: 'ti-arrows-split-2',
+              SUSPEND_ACCOUNT: 'ti-lock',
+              REACTIVATE_ACCOUNT: 'ti-lock-open',
+              EXPIRE_ACCOUNT: 'ti-clock-off',
+              NOTIFY_WEBHOOK: 'ti-webhook',
+              FLAG_FOR_REVIEW: 'ti-flag',
+            };
+            return icons[action] || 'ti-bolt';
+          };
+
+          const conditionLabel = (cond) => {
+            if (!cond || typeof cond !== 'object') return JSON.stringify(cond ?? {});
+            const entries = Object.entries(cond);
+            return entries.map(([k, v]) => {
+              const labels = { amount_gte: 'amount ≥', amount_lte: 'amount ≤', cumulative_gte: 'cumulative ≥', cumulative_lte: 'cumulative ≤', no_inflow_for_days: 'no inflow for', eventName: 'event =', fromTier: 'tier from', toTier: 'tier to' };
+              const lbl = labels[k] || k;
+              const val = typeof v === 'number' && (k.includes('amount') || k.includes('cumulative'))
+                ? `₦${(v / 100).toLocaleString()}`
+                : String(v);
+              return `${lbl} ${val}`;
+            }).join(', ');
+          };
+
+          const payloadLabel = (action, payload) => {
+            if (!payload) return '';
+            if (action === 'RELEASE_FUNDS') {
+              const dest = payload.destinationAccountRef || '';
+              const amt = payload.percentage != null ? `${payload.percentage}%` : payload.amountKobo != null ? `₦${(payload.amountKobo / 100).toLocaleString()}` : '';
+              return `→ ${dest}${amt ? ' · ' + amt : ''}`;
+            }
+            if (action === 'NOTIFY_WEBHOOK') return payload.url || '';
+            return JSON.stringify(payload);
+          };
+
+          panel.innerHTML = `
+            <div class="card" style="margin-bottom:12px;padding:14px 16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <div>
+                  <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);font-family:var(--font-mono)">${escHtml(ref)}</div>
+                  <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">
+                    ${statusBadge(account.status)}
+                    <span style="margin-left:8px">Execution: <strong>${execModel}</strong></span>
+                    ${account.accountNumber ? `<span style="margin-left:8px;font-family:var(--font-mono)">${escHtml(account.accountNumber)}</span>` : ''}
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--color-text-tertiary)">${rules.length} rule${rules.length !== 1 ? 's' : ''}</div>
+              </div>
+            </div>
+            ${rules.length === 0
+              ? `<div class="card" style="text-align:center;padding:32px;color:var(--color-text-tertiary);font-size:12px">No rules attached to this account.</div>`
+              : rules.map((r, i) => `
+                <div class="rule-card" style="margin-bottom:10px">
+                  <div class="rule-header">
+                    <span class="priority-badge">#${i + 1}</span>
+                    <span style="font-size:12px;color:var(--color-text-primary);flex:1;font-weight:500;font-family:var(--font-mono)">${escHtml(r.trigger?.toLowerCase() || '—')}</span>
+                    <span class="badge ${r.status === 'ACTIVE' ? 'badge-active' : 'badge-suspended'}">${r.status || 'ACTIVE'}</span>
+                    <button onclick="toggleRule('${escHtml(ref)}','${escHtml(r.id)}',${r.status !== 'ACTIVE'})"
+                      title="${r.status === 'ACTIVE' ? 'Disable' : 'Enable'}"
+                      style="background:none;border:none;cursor:pointer;padding:2px 6px;font-size:13px;color:var(--color-text-tertiary)">
+                      <i class="ti ${r.status === 'ACTIVE' ? 'ti-player-pause' : 'ti-player-play'}"></i>
+                    </button>
+                    <button onclick="deleteRule('${escHtml(ref)}','${escHtml(r.id)}')"
+                      title="Delete rule"
+                      style="background:none;border:none;cursor:pointer;padding:2px 6px;font-size:13px;color:#a32d2d">
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  </div>
+                  <div class="rule-body">
+                    <div class="rule-row">
+                      <span class="rule-tag rule-when">WHEN</span>
+                      <span style="font-size:12px;color:var(--color-text-primary)">${escHtml(conditionLabel(r.condition))}</span>
+                    </div>
+                    <div class="rule-row" style="margin-top:8px">
+                      <span class="rule-tag rule-then">THEN</span>
+                      <div class="action-card">
+                        <i class="ti ${actionIcon(r.action)}"></i>
+                        ${escHtml((r.action || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()))}
+                        ${r.payload ? `<span style="font-size:10px;color:#0f6e56;font-family:var(--font-mono);margin-left:6px">${escHtml(payloadLabel(r.action, r.payload))}</span>` : ''}
+                      </div>
+                    </div>
+                    ${r.priority != null ? `<div style="margin-top:6px"><span class="priority-badge">priority ${r.priority}</span></div>` : ''}
+                  </div>
+                </div>`).join('')}`;
+        } catch (e) {
+          panel.innerHTML = `<div class="card" style="color:#a32d2d;font-size:12px;padding:16px">Error: ${escHtml(e.message)}</div>`;
+        }
+      }
+
+      async function toggleRule(accountRef, ruleId, enable) {
+        try {
+          await apiFetch(`/accounts/${accountRef}/rules/${ruleId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ enabled: enable }),
+          });
+          // Invalidate cache and refresh
+          _accountsCache = null;
+          await selectRulesAccount(accountRef);
+          const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = d.data || [];
+          renderRulesAccountList(_accountsCache);
+        } catch (e) {
+          alert(`Failed to toggle rule: ${e.message}`);
+        }
+      }
+
+      async function deleteRule(accountRef, ruleId) {
+        if (!confirm('Delete this rule? This cannot be undone.')) return;
+        try {
+          await apiFetch(`/accounts/${accountRef}/rules/${ruleId}`, { method: 'DELETE' });
+          _accountsCache = null;
+          const d = await apiFetch('/accounts?limit=100').catch(() => ({ data: [] }));
+          _accountsCache = d.data || [];
+          renderRulesAccountList(_accountsCache);
+          await selectRulesAccount(accountRef);
+        } catch (e) {
+          alert(`Failed to delete rule: ${e.message}`);
+        }
       }
 
       /* ── Create Customer Modal ───────────────────────────────────────── */
@@ -2788,8 +2999,167 @@
         .addEventListener('click', function (e) {
           if (e.target === this) this.style.display = 'none';
         });
-    </script>
-    <script>
+      document
+        .getElementById('provision-account-modal')
+        .addEventListener('click', function (e) {
+          if (e.target === this) closeProvisionAccount();
+        });
+
+      /* ── Provision Account Modal ─────────────────────────────────────── */
+      function openProvisionAccount() {
+        if (!API_LIVE || !API_KEY) {
+          alert('Connect the API first.');
+          return;
+        }
+        document.getElementById('pa-ref').value = '';
+        document.getElementById('pa-name').value = '';
+        document.getElementById('pa-customer').value = '';
+        document.getElementById('pa-exec-model').value = 'SEQUENTIAL';
+        document.getElementById('pa-rule-trigger').value = 'inflow_received';
+        document.getElementById('pa-rule-action').value = 'suspend_account';
+        document.getElementById('pa-rule-condition').value = '{"amount_gte": 5000000}';
+        document.getElementById('pa-rule-payload').value = '';
+        document.getElementById('pa-error').style.display = 'none';
+        paUpdateConditionHint();
+        paTogglePayload();
+        document.getElementById('provision-account-modal').style.display = 'flex';
+      }
+
+      function paUpdateConditionHint() {
+        const trigger = document.getElementById('pa-rule-trigger').value;
+        const hints = {
+          inflow_received: '— e.g. {"amount_gte": 5000000} (kobo)',
+          custom_event: '— e.g. {"eventName": "delivery_confirmed"}',
+          time_elapsed: '— e.g. {"no_inflow_for_days": 7}',
+          tier_changed: '— e.g. {"fromTier": "TIER_0", "toTier": "TIER_1"}',
+        };
+        const defaults = {
+          inflow_received: '{"amount_gte": 5000000}',
+          custom_event: '{"eventName": "delivery_confirmed"}',
+          time_elapsed: '{"no_inflow_for_days": 7}',
+          tier_changed: '{"toTier": "TIER_1"}',
+        };
+        document.getElementById('pa-condition-hint').textContent = hints[trigger] || '';
+        document.getElementById('pa-rule-condition').value = defaults[trigger] || '';
+      }
+
+      function paTogglePayload() {
+        const action = document.getElementById('pa-rule-action').value;
+        const wrap = document.getElementById('pa-payload-wrap');
+        const hint = document.getElementById('pa-payload-hint');
+        const ta = document.getElementById('pa-rule-payload');
+        if (action === 'notify_webhook') {
+          wrap.style.display = 'block';
+          hint.textContent = '— required: {"url": "https://..."}';
+          ta.placeholder = '{"url": "https://yourbusiness.com/hooks/payment"}';
+          ta.value = ta.value || '{"url": "https://yourbusiness.com/hooks/payment"}';
+        } else if (action === 'release_funds') {
+          wrap.style.display = 'block';
+          hint.textContent = '— required: destinationAccountRef + percentage or amountKobo';
+          ta.placeholder = '{"destinationAccountRef": "treasury-bucket", "percentage": 100}';
+          ta.value = ta.value || '{"destinationAccountRef": "treasury-bucket", "percentage": 100}';
+        } else {
+          wrap.style.display = 'none';
+          ta.value = '';
+        }
+      }
+
+      function closeProvisionAccount() {
+        document.getElementById('provision-account-modal').style.display = 'none';
+      }
+
+      async function submitProvisionAccount() {
+        const accountRef = document.getElementById('pa-ref').value.trim();
+        const accountName = document.getElementById('pa-name').value.trim();
+        const customerId = document.getElementById('pa-customer').value.trim();
+        const executionModel = document.getElementById('pa-exec-model').value;
+        const trigger = document.getElementById('pa-rule-trigger').value;
+        // Strip the descriptive suffix from the action option value
+        const action = document.getElementById('pa-rule-action').value.split(' ')[0];
+        const conditionRaw = document.getElementById('pa-rule-condition').value.trim();
+        const payloadRaw = document.getElementById('pa-rule-payload').value.trim();
+        const errEl = document.getElementById('pa-error');
+        const btn = document.getElementById('pa-submit');
+
+        if (!accountRef) {
+          errEl.textContent = 'Account Ref is required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        if (!accountName) {
+          errEl.textContent = 'Account Name is required.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        let condition;
+        try {
+          condition = JSON.parse(conditionRaw || '{}');
+        } catch {
+          errEl.textContent = 'Condition must be valid JSON.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        let payload;
+        if (payloadRaw) {
+          try {
+            payload = JSON.parse(payloadRaw);
+          } catch {
+            errEl.textContent = 'Payload must be valid JSON.';
+            errEl.style.display = 'block';
+            return;
+          }
+        }
+
+        // Validate payload required for certain actions
+        if (action === 'notify_webhook' && !payload?.url) {
+          errEl.textContent = 'notify_webhook requires a payload with "url".';
+          errEl.style.display = 'block';
+          return;
+        }
+        if (action === 'release_funds' && !payload?.destinationAccountRef) {
+          errEl.textContent = 'release_funds requires a payload with "destinationAccountRef".';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        errEl.style.display = 'none';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Provisioning…';
+
+        const rule = { trigger, condition, action };
+        if (payload) rule.payload = payload;
+
+        const body = {
+          accountRef,
+          accountName,
+          executionModel,
+          rules: [rule],
+        };
+        if (customerId) body.customerId = customerId;
+
+        try {
+          const result = await apiFetch('/accounts', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+          closeProvisionAccount();
+          // Invalidate cache and refresh
+          _accountsCache = null;
+          await loadAccounts();
+          const sub = document.getElementById('accounts-sub');
+          sub.textContent = `✓ Account "${result.accountRef}" provisioned`;
+          setTimeout(() => refreshDashboardFromCache(), 500);
+        } catch (e) {
+          errEl.textContent = e.message;
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="ti ti-plus"></i> Provision';
+        }
+      }
+
       /* ── Demo Scenarios ──────────────────────────────────────────────── */
       const demoDefaults = {
         escrow: {
@@ -3959,11 +4329,31 @@
         el.classList.add('active');
         document.getElementById('topbar-title').textContent =
           screenTitles[id] || id;
+        if (id === 'rules') {
+          if (API_LIVE) {
+            if (_accountsCache) {
+              renderRulesAccountList(_accountsCache);
+              const first = _accountsCache.find(a => (a.rules?.length ?? 0) > 0) || _accountsCache[0];
+              if (first && !_rulesSelectedRef) selectRulesAccount(first.accountRef);
+            } else {
+              loadRules();
+            }
+          }
+        }
         if (id === 'customers') {
           if (API_LIVE) loadCustomers();
         }
         if (id === 'accounts') {
-          if (API_LIVE) loadAccounts();
+          if (API_LIVE) _accountsCache ? loadAccountsFromCache() : loadAccounts();
+        }
+        if (id === 'ledger') {
+          if (API_LIVE) _accountsCache ? loadLedgerFromCache() : loadLedger();
+        }
+        if (id === 'audit') {
+          if (API_LIVE) _accountsCache ? loadAuditFromCache() : loadAudit();
+        }
+        if (id === 'dashboard') {
+          if (API_LIVE) _accountsCache ? refreshDashboardFromCache() : refreshDashboard();
         }
       }
       function setToggle(el) {
@@ -3980,35 +4370,19 @@
       }
 
       /* ── Chart ──────────────────────────────────────────────────────── */
-      new Chart(document.getElementById('inflowChart'), {
+      const inflowChartInstance = new Chart(document.getElementById('inflowChart'), {
         type: 'bar',
         data: {
-          labels: [
-            'Jun 6',
-            '7',
-            '8',
-            '9',
-            '10',
-            '11',
-            '12',
-            '13',
-            '14',
-            '15',
-            '16',
-            '17',
-            '18',
-            'Jun 19',
-          ],
-          datasets: [
-            {
-              data: [
-                42, 55, 38, 70, 85, 62, 90, 110, 95, 130, 118, 145, 160, 180,
-              ],
-              backgroundColor: '#0F6E56',
-              borderRadius: 3,
-              borderSkipped: false,
-            },
-          ],
+          labels: Array.from({ length: 14 }, (_, i) => {
+            const d = new Date(); d.setDate(d.getDate() - (13 - i));
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          }),
+          datasets: [{
+            data: new Array(14).fill(0),
+            backgroundColor: '#0F6E56',
+            borderRadius: 3,
+            borderSkipped: false,
+          }],
         },
         options: {
           responsive: true,

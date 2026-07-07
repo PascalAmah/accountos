@@ -214,6 +214,9 @@ export class AccountLifecycleService {
         take: filters.limit,
         orderBy: { createdAt: 'desc' },
         include: {
+          customer: {
+            select: { id: true, displayName: true, kycTier: true },
+          },
           rules: {
             where: { status: 'ACTIVE' },
             orderBy: { priority: 'asc' },

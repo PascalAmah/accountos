@@ -1,4 +1,5 @@
 import { IsOptional, IsString, IsEnum, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ReconciliationStatus } from '@prisma/client';
 
 export class LedgerFiltersDto {
@@ -20,5 +21,6 @@ export class LedgerFiltersDto {
 
   @IsOptional()
   @IsNumber()
+  @Type(() => Number)
   limit?: number;
 }
