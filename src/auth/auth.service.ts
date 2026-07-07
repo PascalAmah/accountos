@@ -364,7 +364,8 @@ export class AuthService {
         !!business.nombaAccountId &&
         !!(b['nombaSubAccountId'] as string | null) &&
         !!business.nombaClientId &&
-        !!business.nombaClientSecret,
+        !!business.nombaClientSecret &&
+        !!business.nombaWebhookSecret,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt,
     };
