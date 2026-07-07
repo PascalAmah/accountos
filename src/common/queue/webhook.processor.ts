@@ -86,7 +86,84 @@ export class WebhookProcessorService extends WorkerHost {
       const isCustomEvent =
         payload.eventType && payload.eventType !== 'NOMBA_INFLOW';
 
-      // ── Step 3: Status check (SUSPENDED gate) ──────────────────────────
+      // ── Step 3: Custom event short-circuit (no ledger write) ────────────
+      // Custom events (e.g. cycle_reset) don't represent monetary inflows.
+      // Skip to rule evaluation directly without writing a LedgerEntry.
+      if (isCustomEvent) {
+        this.logger.log(
+          {
+            ...logMeta,
+            accountRef: account.accountRef,
+            eventType: payload.eventType,
+          },
+          'Custom event — skipping ledger write, evaluating rules',
+        );
+
+        // Evaluate rules for custom event matching
+        const matchingRules = await this.ruleEngine.evaluate({
+          accountId: account.id,
+          executionModel: account.executionModel,
+          amountKobo: 0n,
+          cumulativeAmountKobo: 0n,
+          eventType: payload.eventType ?? 'CUSTOM_EVENT',
+          eventName: payload.eventType,
+        });
+
+        if (matchingRules.length > 0) {
+          const business = await this.prisma.business.findUnique({
+            where: { id: businessId },
+          });
+
+          if (business) {
+            // Create a minimal pseudo-ledger-entry for rule execution context
+            const pseudoLedgerEntry = {
+              id: `custom_${payload.eventId}`,
+              amountKobo: 0n,
+              nombaTransactionRef: payload.transactionRef,
+              nombaEventId: payload.eventId,
+            };
+
+            for (const evaluatedRule of matchingRules) {
+              await this.ruleEngine.execute(
+                evaluatedRule,
+                pseudoLedgerEntry,
+                business,
+              );
+            }
+          }
+        }
+
+        // Write ProcessedEvent and audit
+        await this.auditService.log({
+          actor: 'system',
+          action: 'CUSTOM_EVENT_PROCESSED',
+          accountId: account.id,
+          businessId,
+          metadata: {
+            eventId: payload.eventId,
+            eventType: payload.eventType,
+            matchedRules: matchingRules.length,
+          },
+        });
+
+        await this.prisma.processedEvent.create({
+          data: {
+            eventId: payload.eventId,
+            eventType: payload.eventType ?? 'CUSTOM_EVENT',
+            accountRef: account.accountRef,
+            businessId,
+            payload: payload as unknown as Prisma.InputJsonValue,
+          },
+        });
+
+        this.logger.log(
+          { ...logMeta, accountRef: account.accountRef },
+          'Custom event processing complete',
+        );
+        return;
+      }
+
+      // ── Step 4: Status check (SUSPENDED gate) ──────────────────────────
       if (account.status === 'SUSPENDED') {
         // Write FLAGGED ledger entry, skip rule evaluation
         await this.ledgerService.writeInflow(
@@ -125,7 +202,7 @@ export class WebhookProcessorService extends WorkerHost {
         return;
       }
 
-      // ── Step 4: Handle CLOSED/EXPIRED ──────────────────────────────────
+      // ── Step 5: Handle CLOSED/EXPIRED ──────────────────────────────────
       if (account.status === 'CLOSED' || account.status === 'EXPIRED') {
         this.logger.warn(
           {
@@ -150,7 +227,7 @@ export class WebhookProcessorService extends WorkerHost {
         return;
       }
 
-      // ── Step 5: Write LedgerEntry (PENDING) ────────────────────────────
+      // ── Step 6: Write LedgerEntry (PENDING) ────────────────────────────
       const cumulativeAmount = await this.ledgerService.writeInflow(
         {
           accountId: account.id,
@@ -176,17 +253,15 @@ export class WebhookProcessorService extends WorkerHost {
         'Inflow ledger entry written',
       );
 
-      // ── Steps 6–9: Rule evaluation + execution ─────────────────────────
+      // ── Steps 7–9: Rule evaluation + execution ─────────────────────────
       // Evaluate rules and execute matching ones
       const matchingRules = await this.ruleEngine.evaluate({
         accountId: account.id,
         executionModel: account.executionModel,
         amountKobo: BigInt(payload.amountKobo),
         cumulativeAmountKobo: cumulativeAmount,
-        eventType: isCustomEvent
-          ? (payload.eventType ?? 'NOMBA_INFLOW')
-          : 'NOMBA_INFLOW',
-        eventName: isCustomEvent ? payload.eventType : undefined,
+        eventType: 'NOMBA_INFLOW',
+        eventName: undefined,
       });
 
       if (matchingRules.length > 0) {
@@ -284,16 +359,21 @@ export class WebhookProcessorService extends WorkerHost {
                     }
 
                     if (transferAmountKobo > 0n) {
-                      // Step 10: Write OUTFLOW on the treasury bucket account
-                      await this.ledgerService.writeOutflow({
-                        accountId: destinationAccount.id,
-                        nombaTransactionRef: `alloc_${payload.transactionRef}_${destinationAccount.id.slice(0, 8)}`,
-                        amountKobo: Number(transferAmountKobo),
-                        narration: `RELEASE_FUNDS allocation from ${account.accountRef}`,
-                        customerNameSnapshot: 'System',
-                        kycTierAtTime: 'TIER_1',
-                        cumulativeAmountKobo: 0n,
-                      });
+                      // Step 10: Write INFLOW on the treasury bucket account
+                      // (the bucket is *receiving* money from the RELEASE_FUNDS allocation,
+                      //  so this must be an INFLOW entry, not an OUTFLOW)
+                      await this.ledgerService.writeInflow(
+                        {
+                          accountId: destinationAccount.id,
+                          nombaTransactionRef: `alloc_${payload.transactionRef}_${destinationAccount.id.slice(0, 8)}`,
+                          nombaEventId: `alloc_${payload.eventId}_${destinationAccount.id.slice(0, 8)}`,
+                          amountKobo: Number(transferAmountKobo),
+                          narration: `RELEASE_FUNDS allocation from ${account.accountRef}`,
+                          customerNameSnapshot: 'System',
+                          kycTierAtTime: 'TIER_1',
+                        },
+                        'MATCHED',
+                      );
 
                       // Step 11: Write ALLOCATE_FUNDS AuditLogEntry on the bucket
                       await this.auditService.log({
@@ -314,7 +394,7 @@ export class WebhookProcessorService extends WorkerHost {
                           destinationAccountRef,
                           transferAmountKobo: transferAmountKobo.toString(),
                         },
-                        'Treasury bucket OUTFLOW written (ALLOCATE_FUNDS)',
+                        'Treasury bucket INFLOW written (ALLOCATE_FUNDS)',
                       );
                     }
                   }
@@ -371,9 +451,7 @@ export class WebhookProcessorService extends WorkerHost {
       await this.prisma.processedEvent.create({
         data: {
           eventId: payload.eventId,
-          eventType: isCustomEvent
-            ? (payload.eventType ?? 'NOMBA_INFLOW')
-            : 'NOMBA_INFLOW',
+          eventType: 'NOMBA_INFLOW',
           accountRef: account.accountRef,
           businessId,
           payload: payload as unknown as Prisma.InputJsonValue,
