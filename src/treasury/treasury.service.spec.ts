@@ -54,7 +54,9 @@ describe('TreasuryService', () => {
       },
       $transaction: jest
         .fn()
-        .mockImplementation((fn: Function) => fn(mockPrisma)),
+        .mockImplementation((fn: (tx: typeof mockPrisma) => unknown) =>
+          fn(mockPrisma),
+        ),
     };
 
     mockNombaClient = {
@@ -77,10 +79,10 @@ describe('TreasuryService', () => {
     };
 
     service = new TreasuryService(
-      mockPrisma as any,
-      mockNombaClient as any,
-      mockLedgerService as any,
-      mockAuditService as any,
+      mockPrisma,
+      mockNombaClient,
+      mockLedgerService,
+      mockAuditService,
     );
   });
 

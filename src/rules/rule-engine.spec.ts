@@ -49,9 +49,9 @@ describe('RuleEngineService', () => {
     };
 
     service = new RuleEngineService(
-      mockPrisma as any,
-      mockNombaClient as any,
-      mockAuditService as any,
+      mockPrisma,
+      mockNombaClient,
+      mockAuditService,
     );
   });
 

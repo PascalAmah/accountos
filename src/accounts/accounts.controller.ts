@@ -25,13 +25,13 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 
 @ApiTags('accounts')
 @ApiSecurity('api-key')
-@Controller()
+@Controller('accounts')
 export class AccountsController {
   constructor(private readonly accountLifecycle: AccountLifecycleService) {}
 
   // ─── POST /accounts ─────────────────────────────────────────────────────
 
-  @Post('accounts')
+  @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Provision a new virtual account with rule set' })
   @ApiResponse({ status: 201, description: 'Account provisioned successfully' })
@@ -48,7 +48,7 @@ export class AccountsController {
 
   // ─── GET /accounts ─────────────────────────────────────────────────────
 
-  @Get('accounts')
+  @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List accounts for the authenticated business' })
   @ApiQuery({
@@ -73,21 +73,21 @@ export class AccountsController {
     });
   }
 
-  // ─── GET /accounts/:accountRef/state ───────────────────────────────────
+  // ─── GET /accounts/:ref/state ──────────────────────────────────────────
 
-  @Get('accounts/:accountRef/state')
+  @Get(':ref/state')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get rich state summary of an account' })
   @ApiResponse({ status: 200, description: 'Account state' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Account not found' })
-  async getState(@Param('accountRef') accountRef: string, @Req() req: Request) {
-    return this.accountLifecycle.getAccountState(accountRef, req.business.id);
+  async getState(@Param('ref') ref: string, @Req() req: Request) {
+    return this.accountLifecycle.getAccountState(ref, req.business.id);
   }
 
-  // ─── PATCH /accounts/:accountRef/status ────────────────────────────────
+  // ─── PATCH /accounts/:ref/status ───────────────────────────────────────
 
-  @Patch('accounts/:accountRef/status')
+  @Patch(':ref/status')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Manually override account status' })
   @ApiResponse({ status: 200, description: 'Status updated' })
@@ -98,22 +98,17 @@ export class AccountsController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Account not found' })
   async updateStatus(
-    @Param('accountRef') accountRef: string,
+    @Param('ref') ref: string,
     @Body() dto: UpdateStatusDto,
     @Req() req: Request,
   ) {
     const actor = req.apiKey.keyPrefix;
-    return this.accountLifecycle.updateStatus(
-      accountRef,
-      dto,
-      req.business.id,
-      actor,
-    );
+    return this.accountLifecycle.updateStatus(ref, dto, req.business.id, actor);
   }
 
-  // ─── DELETE /accounts/:accountRef ─────────────────────────────────────
+  // ─── DELETE /accounts/:ref ─────────────────────────────────────────────
 
-  @Delete('accounts/:accountRef')
+  @Delete(':ref')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Close an account (EC-02)' })
   @ApiResponse({ status: 200, description: 'Account closed' })
@@ -124,12 +119,12 @@ export class AccountsController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Account not found' })
   async close(
-    @Param('accountRef') accountRef: string,
+    @Param('ref') ref: string,
     @Req() req: Request & { business: Record<string, unknown> },
   ) {
     const actor = req.apiKey.keyPrefix;
     return this.accountLifecycle.closeAccount(
-      accountRef,
+      ref,
       (req as unknown as { business: { id: string } }).business.id,
       actor,
       req.business,

@@ -61,23 +61,20 @@ describe('IdentityService', () => {
       log: jest.fn().mockResolvedValue(undefined),
     };
 
-    service = new IdentityService(mockPrisma as any, mockAudit as any);
+    service = new IdentityService(mockPrisma, mockAudit);
   });
 
   // ── EC-01: Rename writes NameHistory BEFORE displayName update ────────────
 
   it('captures previous name before updating displayName (EC-01)', async () => {
-    const nameHistoryCreate = jest.fn();
-    const customerUpdate = jest.fn();
-
     // Replace mock to verify ordering
-    mockPrisma.customer.update.mockImplementation(async (args: any) => {
+    mockPrisma.customer.update.mockImplementation((args: any) => {
       // Verify nameHistory.create is called WITH the old name
       // and the update data contains the new name
       expect(args.data.nameHistory.create.previousName).toBe('Alice');
       expect(args.data.nameHistory.create.newName).toBe('Alice Updated');
       expect(args.data.displayName).toBe('Alice Updated');
-      return {
+      return Promise.resolve({
         ...mockCustomer,
         displayName: 'Alice Updated',
         nameHistory: [
@@ -88,7 +85,7 @@ describe('IdentityService', () => {
             changedAt: new Date(),
           },
         ],
-      };
+      });
     });
 
     const result = await service.renameCustomer(

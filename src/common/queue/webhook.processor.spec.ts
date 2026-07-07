@@ -1,5 +1,5 @@
 import { WebhookProcessorService } from './webhook.processor';
-import { Job, Queue } from 'bullmq';
+import { Job } from 'bullmq';
 
 describe('WebhookProcessorService', () => {
   let service: WebhookProcessorService;
@@ -83,26 +83,26 @@ describe('WebhookProcessorService', () => {
     };
 
     service = new WebhookProcessorService(
-      mockPrisma as any,
-      mockLedgerService as any,
-      mockAuditService as any,
-      mockRuleEngine as any,
-      mockRetryQueue as any,
+      mockPrisma,
+      mockLedgerService,
+      mockAuditService,
+      mockRuleEngine,
+      mockRetryQueue,
     );
   });
 
   // ── Helper to create a mock BullMQ Job ────────────────────────────────────
 
-  function makeJob(
-    data = mockPayload,
-  ): Job<typeof mockPayload> {
+  function makeJob(data = mockPayload): Job<typeof mockPayload> {
     return { data, id: 'job-1' } as any;
   }
 
   // ── EC-04: Duplicate event ────────────────────────────────────────────────
 
   it('discards duplicate events (EC-04)', async () => {
-    mockPrisma.processedEvent.findUnique.mockResolvedValue({ eventId: 'evt_abc123' });
+    mockPrisma.processedEvent.findUnique.mockResolvedValue({
+      eventId: 'evt_abc123',
+    });
 
     await service.process(makeJob());
 
@@ -228,8 +228,12 @@ describe('WebhookProcessorService', () => {
     await service.process(makeJob());
 
     // Ordering: ledger → evaluate → execute → processedEvent
-    expect(callOrder.indexOf('ledger')).toBeLessThan(callOrder.indexOf('evaluate'));
-    expect(callOrder.indexOf('evaluate')).toBeLessThan(callOrder.indexOf('processedEvent'));
+    expect(callOrder.indexOf('ledger')).toBeLessThan(
+      callOrder.indexOf('evaluate'),
+    );
+    expect(callOrder.indexOf('evaluate')).toBeLessThan(
+      callOrder.indexOf('processedEvent'),
+    );
 
     // ProcessedEvent.create IS called
     expect(mockPrisma.processedEvent.create).toHaveBeenCalled();
