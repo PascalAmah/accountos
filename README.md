@@ -124,7 +124,15 @@ curl -X POST http://localhost:3000/api/v1/api-keys \
 # Key shown once — save it
 ```
 
-**3. Provision a virtual account with rules**
+**3. Create a customer**
+```bash
+curl -X POST http://localhost:3000/api/v1/customers \
+  -H "x-api-key: <your-key>" \
+  -H "Content-Type: application/json" \
+  -d '{ "displayName": "Amaka Okafor" }'
+```
+
+**4. Provision a virtual account with rules**
 ```bash
 curl -X POST http://localhost:3000/api/v1/accounts \
   -H "x-api-key: <your-key>" \
@@ -144,12 +152,15 @@ curl -X POST http://localhost:3000/api/v1/accounts \
   }'
 ```
 
-**4. Simulate an inflow**
+**5. Simulate an inflow**
+
+Use the `accountNumber` (NUBAN) returned from step 4:
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/demo/simulate-inflow \
   -H "x-admin-secret: change-me-in-prod" \
   -H "Content-Type: application/json" \
-  -d '{ "accountRef": "ajo-amaka-jan", "amountKobo": 5000000 }'
+  -d '{ "accountNumber": "<nuban-from-step-4>", "amountKobo": 5000000 }'
 ```
 
 Swagger docs available at `http://localhost:3000/api/docs`.
@@ -167,6 +178,7 @@ Swagger docs available at `http://localhost:3000/api/docs`.
      -H "Content-Type: application/json" \
      -d '{
        "nombaAccountId": "...",
+       "nombaSubAccountId": "...",
        "nombaClientId": "...",
        "nombaClientSecret": "...",
        "nombaWebhookSecret": "..."
@@ -182,25 +194,85 @@ All endpoints are under `/api/v1`. Auth via `x-api-key` header. Admin routes use
 
 Amounts are always in **kobo** (integer). ₦50,000 = `5000000`.
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `POST` | `/businesses` | Register a business tenant |
-| `PATCH` | `/businesses/:id/credentials` | Update Nomba credentials |
-| `POST` | `/api-keys` | Generate an API key (shown once) |
-| `POST` | `/customers` | Create a customer identity |
-| `PATCH` | `/customers/:id/kyc-tier` | Update KYC tier |
-| `POST` | `/accounts` | Provision DVA + attach rules |
-| `GET` | `/accounts/:ref/state` | Account state + rule summary |
-| `PUT` | `/accounts/:ref/rules` | Replace rule set |
-| `POST` | `/accounts/:ref/events` | Fire a custom event (escrow, disputes) |
-| `GET` | `/accounts/:ref/ledger` | Immutable inflow ledger |
-| `GET` | `/accounts/:ref/audit` | Full audit trail |
-| `POST` | `/treasury-buckets` | Provision a treasury bucket DVA |
-| `GET` | `/treasury-buckets/:ref/balance` | Ledger-computed balance |
-| `POST` | `/treasury-buckets/:ref/withdraw` | Withdraw to external bank account |
-| `POST` | `/webhooks/nomba` | Nomba inflow webhook intake (HMAC-verified) |
-| `POST` | `/demo/simulate-inflow` | Simulate inflow (mock mode only) |
-| `GET` | `/health` | Health check |
+### Auth & API keys
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/businesses` | admin-secret | Register a business tenant |
+| `GET` | `/businesses/me` | api-key | Get authenticated business profile |
+| `PATCH` | `/businesses/:id/credentials` | admin-secret | Update Nomba credentials |
+| `POST` | `/api-keys` | admin-secret | Generate an API key (shown once) |
+| `GET` | `/api-keys` | api-key | List all API keys |
+| `DELETE` | `/api-keys/:id` | api-key | Revoke an API key |
+
+### Customers
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/customers` | api-key | Create a customer identity |
+| `GET` | `/customers` | api-key | List all customers |
+| `GET` | `/customers/:id` | api-key | Get customer with name history & accounts |
+| `PATCH` | `/customers/:id/name` | api-key | Rename customer — appends history (EC-01) |
+| `PATCH` | `/customers/:id/kyc-tier` | api-key | Update KYC tier — flags stale rules (EC-03) |
+
+### Virtual accounts
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/accounts` | api-key | Provision DVA + attach rules |
+| `GET` | `/accounts` | api-key | List accounts (paginated, filterable by status) |
+| `GET` | `/accounts/:ref/state` | api-key | Account state + rule summary + ledger stats |
+| `PATCH` | `/accounts/:ref/status` | api-key | Manually override account status |
+| `DELETE` | `/accounts/:ref` | api-key | Close account, archive pending executions (EC-02) |
+
+### Rules
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `PUT` | `/accounts/:ref/rules` | api-key | Replace entire rule set |
+| `PATCH` | `/accounts/:ref/rules/:ruleId` | api-key | Enable/disable a single rule |
+| `DELETE` | `/accounts/:ref/rules/:ruleId` | api-key | Delete (archive) a rule |
+
+### Events
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/accounts/:ref/events` | api-key | Fire a custom business event (idempotent) |
+
+### Ledger
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/accounts/:ref/ledger` | api-key | Paginated inflow ledger entries |
+| `GET` | `/accounts/:ref/ledger/summary` | api-key | Aggregate ledger summary |
+| `GET` | `/accounts/:ref/ledger/export` | api-key | Download ledger as CSV |
+
+### Treasury buckets
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/treasury-buckets` | api-key | Provision a treasury bucket DVA |
+| `GET` | `/treasury-buckets` | api-key | List all buckets (paginated) |
+| `GET` | `/treasury-buckets/:ref` | api-key | Get bucket details with balance |
+| `PATCH` | `/treasury-buckets/:ref` | api-key | Rename a bucket |
+| `DELETE` | `/treasury-buckets/:ref` | api-key | Close a bucket |
+| `GET` | `/treasury-buckets/:ref/balance` | api-key | Ledger-computed balance |
+| `GET` | `/treasury-buckets/:ref/statement` | api-key | Paginated ledger statement |
+| `POST` | `/treasury-buckets/:ref/withdraw` | api-key | Withdraw to external bank account (EC-07) |
+
+### Webhooks & demo
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/webhooks/nomba` | HMAC | Nomba inflow webhook intake (HMAC-verified) |
+| `POST` | `/demo/simulate-inflow` | admin-secret | Simulate inflow (demo mode only) |
+| `ANY` | `/demo/webhook-echo` | none | Echo back any payload (debug helper) |
+
+### Health
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/health` | none | DB + Redis connectivity check |
 
 Full spec in [`technical-docs/API_SPEC.md`](./technical-docs/API_SPEC.md).
 
