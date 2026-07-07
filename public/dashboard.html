@@ -3250,7 +3250,7 @@
       }
 
       /* ── Demo Scenarios ──────────────────────────────────────────────── */
-      const demoDefaults = {
+      var demoDefaults = {
         escrow: {
           accountNum: 'escrow-account-num',
           amount: 'escrow-amount',
@@ -3259,7 +3259,7 @@
         },
       };
 
-      const demoScripts = {
+      var demoScripts = {
         escrow: [
           ['c-dim', 'Initialising Escrow scenario…'],
           ['c-key', 'account: ako-escrow-0042 · buyer: Emeka Obi'],
@@ -3492,7 +3492,7 @@
       /* ══════════════════════════════════════════════════════════════════════
    SCHOOL FEES DEMO — 7-step lifecycle
    ══════════════════════════════════════════════════════════════════════ */
-      const SCHOOL_FEES_STEPS = [
+      var SCHOOL_FEES_STEPS = [
         {
           n: 1,
           name: 'Create Customer',
@@ -3903,7 +3903,7 @@
       /* ══════════════════════════════════════════════════════════════════════
    AJO SAVINGS DEMO — 7-step treasury flow
    ══════════════════════════════════════════════════════════════════════ */
-      const AJO_SAVINGS_STEPS = [
+      var AJO_SAVINGS_STEPS = [
         {
           n: 1,
           name: 'Create Customer',
@@ -4398,7 +4398,7 @@
       }
 
       /* ── Navigation ─────────────────────────────────────────────────── */
-      const screenTitles = {
+      var screenTitles = {
         dashboard: 'Dashboard',
         customers: 'Customers',
         accounts: 'Accounts',
@@ -4459,7 +4459,7 @@
       }
 
       /* ── Chart ──────────────────────────────────────────────────────── */
-      const inflowChartInstance = new Chart(document.getElementById('inflowChart'), {
+      var inflowChartInstance = new Chart(document.getElementById('inflowChart'), {
         type: 'bar',
         data: {
           labels: Array.from({ length: 14 }, (_, i) => {
