@@ -15,6 +15,10 @@ import { QueueModule } from './common/queue/queue.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { RulesModule } from './rules/rules.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { EventsModule } from './events/events.module';
+import { DemoModule } from './demo/demo.module';
+import { TreasuryModule } from './treasury/treasury.module';
 import { appConfig } from './config/config';
 
 // Headers and body fields to redact from all request logs
@@ -99,6 +103,10 @@ const REDACTED_BODY_FIELDS = [
     AccountsModule,
     RulesModule,
     NombaClientModule,
+    WebhooksModule,
+    EventsModule,
+    DemoModule,
+    TreasuryModule,
   ],
   providers: [
     {

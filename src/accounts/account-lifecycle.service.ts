@@ -350,9 +350,6 @@ export class AccountLifecycleService {
       where: { id: account.id },
       data: {
         status: dto.status,
-        ...(dto.status
-          ? { closedAt: new Date(), closedReason: dto.reason }
-          : {}),
       },
     });
 

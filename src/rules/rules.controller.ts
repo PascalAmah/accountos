@@ -22,13 +22,13 @@ import { ToggleRuleDto } from './dto/replace-rule-set.dto';
 
 @ApiTags('rules')
 @ApiSecurity('api-key')
-@Controller()
+@Controller('accounts/:ref/rules')
 export class RulesController {
   constructor(private readonly rulesService: RulesService) {}
 
-  // ─── PUT /accounts/:accountRef/rules ───────────────────────────────────
+  // ─── PUT /accounts/:ref/rules ──────────────────────────────────────────
 
-  @Put('accounts/:accountRef/rules')
+  @Put()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replace the entire rule set for an account' })
   @ApiResponse({ status: 200, description: 'Rule set replaced' })
@@ -39,16 +39,16 @@ export class RulesController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Account not found' })
   async replaceRuleSet(
-    @Param('accountRef') accountRef: string,
+    @Param('ref') ref: string,
     @Body() dto: ReplaceRuleSetDto,
     @Req() req: Request,
   ) {
-    return this.rulesService.replaceRuleSet(accountRef, req.business.id, dto);
+    return this.rulesService.replaceRuleSet(ref, req.business.id, dto);
   }
 
-  // ─── PATCH /accounts/:accountRef/rules/:ruleId ─────────────────────────
+  // ─── PATCH /accounts/:ref/rules/:ruleId ────────────────────────────────
 
-  @Patch('accounts/:accountRef/rules/:ruleId')
+  @Patch(':ruleId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Enable or disable a rule (toggle)' })
   @ApiResponse({ status: 200, description: 'Rule toggled' })
@@ -56,32 +56,32 @@ export class RulesController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Rule not found' })
   async toggleRule(
-    @Param('accountRef') accountRef: string,
+    @Param('ref') ref: string,
     @Param('ruleId') ruleId: string,
     @Body() dto: ToggleRuleDto,
     @Req() req: Request,
   ) {
     return this.rulesService.toggleRule(
-      accountRef,
+      ref,
       ruleId,
       req.business.id,
       dto.enabled,
     );
   }
 
-  // ─── DELETE /accounts/:accountRef/rules/:ruleId ────────────────────────
+  // ─── DELETE /accounts/:ref/rules/:ruleId ───────────────────────────────
 
-  @Delete('accounts/:accountRef/rules/:ruleId')
+  @Delete(':ruleId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete (archive) a rule' })
   @ApiResponse({ status: 200, description: 'Rule archived' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Rule not found' })
   async deleteRule(
-    @Param('accountRef') accountRef: string,
+    @Param('ref') ref: string,
     @Param('ruleId') ruleId: string,
     @Req() req: Request,
   ) {
-    return this.rulesService.deleteRule(accountRef, ruleId, req.business.id);
+    return this.rulesService.deleteRule(ref, ruleId, req.business.id);
   }
 }

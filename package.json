@@ -19,8 +19,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "engines": {
-  "node": "20.19.0",
-  "pnpm": "9.15.0"
+    "node": "20.19.0",
+    "pnpm": "9.15.0"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
@@ -87,6 +87,9 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^uuid$": "<rootDir>/test-mocks/uuid.mock.ts"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
