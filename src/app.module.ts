@@ -19,6 +19,8 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { EventsModule } from './events/events.module';
 import { DemoModule } from './demo/demo.module';
 import { TreasuryModule } from './treasury/treasury.module';
+import { SchedulerModule } from './common/scheduler/scheduler.module';
+import { MetricsModule } from './common/metrics/metrics.module';
 import { appConfig } from './config/config';
 
 // Headers and body fields to redact from all request logs
@@ -41,19 +43,13 @@ const REDACTED_BODY_FIELDS = [
     ConfigModule.forRoot({ isGlobal: true }),
 
     // ── Rate limiting ──────────────────────────────────────────────────────
+    // ONE global limiter for authenticated API traffic. Stricter admin/webhook
+    // limits are applied PER-ROUTE via @Throttle — NOT registered globally.
+    // (Every named throttler registered here is enforced on EVERY request, so a
+    // global 'admin' bucket would throttle the whole API at its low 10/min limit.)
     ThrottlerModule.forRoot([
       {
-        name: 'admin',
-        ttl: appConfig.THROTTLE_ADMIN_TTL,
-        limit: appConfig.THROTTLE_ADMIN_LIMIT,
-      },
-      {
-        name: 'webhook',
-        ttl: appConfig.THROTTLE_WEBHOOK_TTL,
-        limit: appConfig.THROTTLE_WEBHOOK_LIMIT,
-      },
-      {
-        name: 'api',
+        name: 'default',
         ttl: appConfig.THROTTLE_API_TTL,
         limit: appConfig.THROTTLE_API_LIMIT,
       },
@@ -107,6 +103,8 @@ const REDACTED_BODY_FIELDS = [
     EventsModule,
     DemoModule,
     TreasuryModule,
+    SchedulerModule,
+    MetricsModule,
   ],
   providers: [
     {
