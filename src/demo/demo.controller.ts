@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { appConfig } from '../config/config';
+import { timingSafeCompare } from '../common/utils/crypto.utils';
 import { ErrorCodes } from '../common/constants/error-codes';
 import { DemoService } from './demo.service';
 import { SimulateInflowDto } from './dto/simulate-inflow.dto';
@@ -53,7 +54,10 @@ export class DemoController {
       });
     }
 
-    if (!adminSecret || adminSecret !== appConfig.ADMIN_SECRET) {
+    if (
+      !adminSecret ||
+      !timingSafeCompare(adminSecret, appConfig.ADMIN_SECRET)
+    ) {
       throw new UnauthorizedException({
         message: 'Invalid admin secret',
         code: ErrorCodes.INVALID_ADMIN_SECRET,
@@ -67,14 +71,21 @@ export class DemoController {
   @All('webhook-echo')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Echo any webhook payload (no auth required)',
+    summary: 'Echo any webhook payload (demo mode only)',
     description:
       'Accepts any HTTP method and any JSON body. Returns the payload ' +
       'back to the caller with a timestamp. Useful for testing webhook ' +
-      'delivery and inspecting payload shape.',
+      'delivery and inspecting payload shape. Requires DEMO_MODE_ENABLED=true.',
   })
   @ApiResponse({ status: 200, description: 'Payload echoed back' })
+  @ApiResponse({ status: 403, description: 'DEMO_MODE_ONLY' })
   webhookEcho(@Body() body: unknown) {
+    if (!appConfig.DEMO_MODE_ENABLED) {
+      throw new ForbiddenException({
+        message: 'ANY /demo/webhook-echo requires DEMO_MODE_ENABLED=true',
+        code: ErrorCodes.DEMO_MODE_ONLY,
+      });
+    }
     return {
       received: true,
       timestamp: new Date().toISOString(),
