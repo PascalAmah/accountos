@@ -137,6 +137,40 @@ enum AuditAction {
   TREASURY_WITHDRAWAL_COMPLETED
   TREASURY_WITHDRAWAL_FAILED
   ALLOCATE_FUNDS
+  BUCKET_TRANSFER                // internal bucket→bucket move (no Nomba)
+  // Settlements
+  SETTLEMENT_RESERVED
+  SETTLEMENT_COMPLETED
+  SETTLEMENT_FAILED
+  SETTLEMENT_CANCELLED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Treasury (logical sub-ledger — see technical-docs/TREASURY_BUILD.md)
+//
+// A TreasuryBucket is NOT a bank account, wallet, or Nomba DVA. Money physically
+// lives in the business's Nomba account; buckets record how it is logically owned.
+// Bucket balances are ALWAYS the sum of their immutable BucketLedgerEntry rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum BucketEntryType {
+  CREDIT // increases bucket balance (allocation, inbound transfer, adjustment)
+  DEBIT  // decreases bucket balance (settlement/withdrawal, outbound transfer)
+}
+
+enum SettlementDestinationType {
+  BANK_ACCOUNT
+  NOMBA_ACCOUNT
+  INTERNAL_BUCKET
+  WEBHOOK
+}
+
+enum SettlementStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +198,9 @@ model Business {
   apiKeys     ApiKey[]
   customers   Customer[]
   accounts    Account[]
+  treasuryBuckets TreasuryBucket[]
+  settlements Settlement[]
+  idempotencyKeys IdempotencyKey[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -243,7 +280,7 @@ model Account {
   id             String         @id @default(cuid())
   accountRef     String         @unique // developer-supplied; also passed to Nomba
   nombaAccountId String         @unique // Nomba's internal ID (for suspend/expire calls)
-  accountNumber  String                  // NUBAN shown to payers
+  accountNumber  String         @unique // NUBAN shown to payers — unique so webhook lookups can't cross tenants
   bankName       String
   status         AccountStatus  @default(ACTIVE)
   executionModel ExecutionModel @default(SEQUENTIAL)
@@ -253,7 +290,6 @@ model Account {
 
   // Treasury-specific fields
   accountType    AccountType    @default(CUSTOMER_ACCOUNT)
-  bucketType     BucketType?    // only set for TREASURY_BUCKET accounts
   description    String?        // optional human description for treasury buckets
 
   // Make customerId nullable for treasury buckets (owned by business, not customer)
@@ -279,7 +315,6 @@ model Account {
   @@index([businessId])
   @@index([accountType])
   @@index([status])
-  @@index([accountNumber]) // webhook processor lookup
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +407,7 @@ model LedgerEntry {
 
   reconciliationStatus ReconciliationStatus @default(PENDING)
   ruleExecutions       RuleExecution[]
+  bucketAllocations    BucketLedgerEntry[]  // treasury allocations sourced from this inflow
 
   receivedAt DateTime
   createdAt  DateTime @default(now())
@@ -423,4 +459,122 @@ model AuditLogEntry {
   @@index([customerId, occurredAt])
   @@index([businessId, occurredAt])
   @@index([action, occurredAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Treasury Bucket (logical sub-ledger — NOT a DVA)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TreasuryBucket {
+  id          String        @id @default(cuid())
+  bucketRef   String        // developer-supplied; unique per business
+  name        String
+  bucketType  BucketType
+  description  String?
+  status      AccountStatus @default(ACTIVE)
+
+  businessId  String
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  // Optional settlement destination — where funds should eventually be sent.
+  // When settlementType is BANK_ACCOUNT, withdrawals may omit destination fields
+  // and fall back to these saved values.
+  settlementType          SettlementDestinationType?
+  settlementAccountName   String?
+  settlementAccountNumber String?
+  settlementBankCode      String?
+
+  ledgerEntries BucketLedgerEntry[]
+  settlements   Settlement[]
+
+  closedAt     DateTime?
+  closedReason String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([businessId, bucketRef])
+  @@index([businessId])
+  @@index([businessId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bucket Ledger (IMMUTABLE — insert only)
+// Balance == SUM(CREDIT) - SUM(DEBIT). Never update or delete these rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BucketLedgerEntry {
+  id        String          @id @default(cuid())
+  bucketId  String
+  bucket    TreasuryBucket  @relation(fields: [bucketId], references: [id], onDelete: Restrict)
+
+  entryType            BucketEntryType
+  amountKobo           BigInt          // KOBO — never Decimal/Float
+  cumulativeAmountKobo BigInt          // running balance at time of this entry
+  reference            String          @unique // idempotency key (e.g. alloc_<txnRef>_<bucket>)
+
+  // Provenance: the customer inflow this allocation was derived from (if any)
+  sourceLedgerEntryId String?
+  sourceLedgerEntry   LedgerEntry? @relation(fields: [sourceLedgerEntryId], references: [id], onDelete: SetNull)
+
+  narration String?
+  createdAt DateTime @default(now())
+
+  @@index([bucketId, createdAt])
+  @@index([entryType])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settlement (durable lifecycle — see technical-docs/TREASURY_BUILD.md)
+//
+// Every external settlement has a Settlement record. PENDING reserves the
+// amount; only COMPLETED settlements produce a DEBIT BucketLedgerEntry.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Settlement {
+  id          String           @id @default(cuid())
+  bucketId    String
+  bucket      TreasuryBucket   @relation(fields: [bucketId], references: [id], onDelete: Restrict)
+  businessId  String
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
+
+  amountKobo  BigInt
+  currency    String           @default("NGN")
+  status      SettlementStatus @default(PENDING)
+
+  destinationType          SettlementDestinationType
+  destinationAccountName   String?
+  destinationAccountNumber String?
+  destinationBankCode      String?
+  destinationBucketRef     String?  // when destinationType = INTERNAL_BUCKET
+
+  nombaTransferReference String?  @unique  // Nomba's reference, set on completion
+  failureReason          String?
+  initiatedBy            String
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([bucketId, status])
+  @@index([businessId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Idempotency Key (safe POST retry — see API_SPEC §Idempotency)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model IdempotencyKey {
+  id             String   @id @default(cuid())
+  key            String
+  businessId     String
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  method         String
+  path           String
+  requestHash    String   // SHA-256 of the request body — detects mismatched retries
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+
+  @@unique([businessId, key])
+  @@index([createdAt])
 }
