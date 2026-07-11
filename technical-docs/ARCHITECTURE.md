@@ -110,8 +110,10 @@ src/
 │
 ├── treasury/
 │   ├── treasury.module.ts
-│   ├── treasury.controller.ts        # /treasury-buckets CRUD + /balance + /statement + /withdraw
-│   ├── treasury.service.ts           # provisionBucket, management, withdrawal (EC-07, EC-08)
+│   ├── allocation.module.ts           # shared AllocationService provider
+│   ├── allocation.service.ts          # internal bucket credit (no Nomba)
+│   ├── treasury.controller.ts         # /treasury-buckets CRUD + /balance + /statement + /transfer + /withdraw
+│   ├── treasury.service.ts            # provisionBucket, transfer, settlement/withdrawal (EC-07)
 │   └── dto/
 │
 ├── demo/
@@ -153,13 +155,11 @@ Business
   │           ├── LedgerEntry[]
   │           ├── RuleExecution[]
   │           └── AuditLogEntry[]
-  └── TreasuryBucket[] (stored as Account[] with accountType: TREASURY_BUCKET, no customerId)
-        ├── LedgerEntry[]
-        ├── RuleExecution[]
-        └── AuditLogEntry[]
+  └── TreasuryBucket[] (logical sub-ledger, no DVA, no customerId)
+        └── BucketLedgerEntry[] (append-only: CREDIT / DEBIT)
 ```
 
-**Treasury buckets as direct Business relations**: Treasury bucket DVAs are scoped directly to a Business (via `businessId` on Account), not through a Customer. They use `Account.accountType = TREASURY_BUCKET` and an optional `bucketType` discriminator (PAYROLL, TAX_RESERVE, OPERATIONS, MARKETING, SAVINGS, CUSTOM). This design allows direct RELEASE_FUNDS rules to target buckets and keeps the ledger/audit infrastructure unified.
+**Treasury buckets as logical sub-ledgers**: Treasury buckets are scoped directly to a Business (via `businessId` on `TreasuryBucket`), not through a Customer, and are a separate model from `Account`. They are NOT Nomba DVAs — money physically stays in the business's single Nomba account. A bucket's balance is `SUM(CREDIT) − SUM(DEBIT)` over its immutable `BucketLedgerEntry` rows. `RELEASE_FUNDS` rules credit a bucket as a pure internal ledger write (no Nomba call); bucket→bucket transfers and external-bank settlement (withdrawal) debit it. See `technical-docs/TREASURY_BUILD.md`.
 
 **Nomba credential isolation:**
 Every Nomba API call made by AccountOS uses the credentials belonging to the business
@@ -186,7 +186,7 @@ This means:
    // Correct — scoped
    prisma.account.findFirst({ where: { accountRef, customer: { businessId } } })
    // For treasury buckets:
-   prisma.account.findFirst({ where: { accountRef, businessId, accountType: 'TREASURY_BUCKET' } })
+   prisma.treasuryBucket.findUnique({ where: { businessId_bucketRef: { businessId, bucketRef } } })
    ```
 5. If a business tries to access another business's `accountRef` or `bucketRef`, the query returns null → 404. No data leaks.
 
@@ -286,18 +286,17 @@ See §5 above. The key ordering rules:
 - `ProcessedEvent` insert is **last** — if worker crashes mid-job, event re-processes safely
 - `LedgerEntry` is written before rule evaluation — inflow is always recorded even if rules fail
 
-### 6.2 Two-Tier DVA Allocation (Customer → RELEASE_FUNDS → Treasury Bucket)
+### 6.2 Inflow Allocation (Customer → RELEASE_FUNDS → Treasury Bucket)
 
 When a customer DVA inflow arrives:
 1. WebhookProcessor evaluates rules (§6.1 flow)
 2. If a matched rule has `action: RELEASE_FUNDS` with `payload.destinationAccountRef` pointing to a treasury bucket:
-   - Compute transfer amount: `floor(payload.percentage / 100 * inflowAmountKobo)` (if percentage-based)
-   - Resolve destination account: `Account.findFirst({ accountRef, businessId, accountType: 'TREASURY_BUCKET' })`
-   - Call `NombaClientService.transferFunds()` from customer DVA → treasury bucket DVA
-   - On success: `RuleExecution.status = COMPLETED`, write OUTFLOW LedgerEntry on treasury bucket, write ALLOCATE_FUNDS AuditLogEntry
-   - On failure: enqueue retry job (EC-06)
+   - Compute credit amount in BigInt kobo: `percentage * inflowAmountKobo / 100` (percentage-based) or `payload.amountKobo`
+   - Resolve destination bucket: `TreasuryBucket.findFirst({ bucketRef, businessId })`
+   - `AllocationService.credit()` writes a **CREDIT `BucketLedgerEntry`** (idempotent on `reference = alloc_<txnRef>_<bucket>`) and an `ALLOCATE_FUNDS` AuditLogEntry — **no Nomba call**
+   - On transient DB failure: `RuleExecution.status = RETRYING`, enqueue retry job (EC-06)
 
-This direct two-tier flow avoids master-account hops. The funds flow: **Nomba → Customer DVA → Nomba → Treasury Bucket DVA**, all within the business's own Nomba wallet.
+Allocation is a **pure internal ledger operation**. No money leaves Nomba — it stays in the business's single Nomba account; the bucket ledger records logical ownership only. See `technical-docs/TREASURY_BUILD.md`.
 
 ### 6.3 KYC Tier Change (EC-03)
 ```
@@ -343,19 +342,49 @@ POST /accounts/ajo-amaka-jan/events
   8. Return 200
 ```
 
-### 6.6 Treasury Withdrawal (EC-07 Insufficient Balance Protection)
+### 6.6 Treasury Withdrawal / Settlement (Durable Lifecycle)
 ```
-POST /treasury-buckets/:ref/withdraw
-  1. Scope check: bucket.businessId === authenticated businessId
-  2. Balance check: LedgerService.getBalance(bucketAccountId)
-     → If balance < amountKobo: throw 422 INSUFFICIENT_BUCKET_BALANCE (no Nomba call)
-  3. Write TREASURY_WITHDRAWAL_INITIATED AuditLogEntry (fire-and-forget)
-  4. Database transaction:
-     a. Write OUTFLOW LedgerEntry with reconciliationStatus: PENDING
-     b. Call NombaClientService.transferFunds()
-     c. If success: update LedgerEntry reconciliationStatus = MATCHED, log TREASURY_WITHDRAWAL_COMPLETED
-     d. If failure: rollback OUTFLOW entry, log TREASURY_WITHDRAWAL_FAILED
-  5. Return closure summary
+POST /treasury-buckets/:ref/withdraw (→ SettlementService.initiate)
+  1. Scope check: bucket.businessId === authenticated businessId; must be ACTIVE
+  2. Resolve destination: request body wins, else bucket's saved settlement destination
+  3. TX1 — Serializable (bucket row locked FOR UPDATE):
+     a. Compute availableKobo = latestBalance − reservedKobo
+        (latestBalance = most recent BucketLedgerEntry.cumulativeAmountKobo, O(1))
+        (reservedKobo = SUM Settlement.amountKobo WHERE status IN (PENDING, PROCESSING))
+        → If availableKobo < amountKobo: throw 422 (no Nomba call, no DB write)
+     b. Create Settlement(PENDING) — this is the balance reservation
+     c. Audit SETTLEMENT_RESERVED
+  4. Mark Settlement → PROCESSING (outside the lock)
+  5. Call NombaClientService.bankTransfer() — no DB lock held across HTTP
+  6. On Nomba success → TX2:
+     a. Write DEBIT BucketLedgerEntry (cumulative via latestBalance)
+     b. Settlement → COMPLETED, store nombaTransferReference, set completedAt
+     c. Audit SETTLEMENT_COMPLETED
+  7. On Nomba failure:
+     a. Settlement → FAILED + failureReason (reservation released; NO DEBIT written — ADR #13)
+     b. Audit SETTLEMENT_FAILED
+     c. Throw 502
+
+  INTERNAL_BUCKET destination: settles as an internal transfer (DEBIT source,
+  CREDIT destination) — no Nomba call. Reuses the bucket-transfer path.
+```
+
+The Settlement row reserves balance in PENDING/PROCESSING state, preventing
+concurrent withdrawals from double-spending. The reservation is derived from
+in-flight Settlement rows — no mutable counter on the bucket — preserving the
+immutable-ledger contract.
+
+### 6.7 Bucket-to-Bucket Transfer (internal)
+```
+POST /treasury-buckets/:ref/transfer
+  1. Scope + active checks on both buckets; reject same-bucket transfer
+  2. Transaction (both bucket rows locked FOR UPDATE):
+     a. Re-check source balance → 422 if insufficient
+     b. Write DEBIT on source + CREDIT on destination (reference = xfer_<uuid>_out / _in)
+  3. Log BUCKET_TRANSFER audit entry
+  4. Return { reference, amountKobo, sourceBalanceKobo, destinationBalanceKobo }
+```
+No Nomba call — value only moves between logical sub-ledgers.
 ```
 
 ---
@@ -423,6 +452,8 @@ export const ErrorCodes = {
   // Nomba
   NOMBA_API_ERROR:        'NOMBA_API_ERROR',
   INVALID_WEBHOOK_SIGNATURE: 'INVALID_WEBHOOK_SIGNATURE',
+  // Idempotency
+  IDEMPOTENCY_KEY_CONFLICT: 'IDEMPOTENCY_KEY_CONFLICT',  // same key, different body → 409
   // Demo / dev
   DEMO_MODE_ONLY:         'DEMO_MODE_ONLY',  // POST /demo/simulate-inflow called outside demo mode
   // Generic

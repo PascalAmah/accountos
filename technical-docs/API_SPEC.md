@@ -13,7 +13,7 @@
 
 ## Treasury Buckets
 
-Treasury bucket DVAs are dedicated virtual accounts provisioned by a business for fund allocation purposes. Unlike customer DVAs (which are tied to a specific `Customer`), buckets are direct business resources. Inflows arrive via `RELEASE_FUNDS` rules on customer DVAs.
+Treasury buckets are **logical sub-ledgers** provisioned by a business for fund allocation — they are NOT Nomba virtual accounts. Money physically stays in the business's own Nomba account; a bucket only records how funds are logically owned (see `technical-docs/TREASURY_BUILD.md`). Buckets are direct business resources (no `Customer`). Balance is credited by `RELEASE_FUNDS` rules on customer DVAs (an internal ledger write — no Nomba call) and debited by bucket-to-bucket transfers and external-bank settlements (withdrawals).
 
 ### POST /treasury-buckets
 Provision a new treasury bucket.
@@ -24,24 +24,28 @@ Provision a new treasury bucket.
   "bucketRef": "payroll-q3-2026",
   "name": "Q3 Payroll Reserve",
   "bucketType": "PAYROLL",
-  "description": "Accumulated payroll for Q3 2026"
+  "description": "Accumulated payroll for Q3 2026",
+  "settlementType": "BANK_ACCOUNT",
+  "settlementAccountNumber": "0123456789",
+  "settlementBankCode": "044",
+  "settlementAccountName": "AjoApp Payroll"
 }
 ```
 
 > `bucketType` must be one of: `PAYROLL`, `TAX_RESERVE`, `OPERATIONS`, `MARKETING`, `SAVINGS`, `CUSTOM`.
 > `bucketRef` must be unique per business.
+> Settlement fields are optional. When `settlementType` is `BANK_ACCOUNT`, withdrawals may omit the destination and fall back to these saved values.
 
 **Response 201:**
 ```json
 {
+  "id": "clx...",
   "bucketRef": "payroll-q3-2026",
-  "nombaAccountId": "nomba_internal_id",
-  "accountNumber": "9901234567",
-  "bankName": "Nomba MFB",
   "bucketType": "PAYROLL",
   "name": "Q3 Payroll Reserve",
   "description": "Accumulated payroll for Q3 2026",
   "status": "ACTIVE",
+  "balanceKobo": 0,
   "createdAt": "2026-06-18T..."
 }
 ```
@@ -52,33 +56,33 @@ Provision a new treasury bucket.
 List all treasury buckets for the authenticated business.
 
 **Query params:**
+- `status` — optional `AccountStatus` filter
 - `page` — default `1`
 - `limit` — default `20`, max `100`
 
 **Response 200:**
 ```json
 {
-  "data": [ /* treasury bucket Account[] */ ],
-  "pagination": { "total": 3, "page": 1, "limit": 20 }
+  "data": [ /* TreasuryBucket[] */ ],
+  "meta": { "total": 3, "page": 1, "limit": 20, "totalPages": 1 }
 }
 ```
 
 ---
 
 ### GET /treasury-buckets/:bucketRef
-Get details of a single treasury bucket.
+Get details of a single treasury bucket (with ledger-computed balance).
 
 **Response 200:**
 ```json
 {
+  "id": "clx...",
   "bucketRef": "payroll-q3-2026",
-  "nombaAccountId": "nomba_internal_id",
-  "accountNumber": "9901234567",
-  "bankName": "Nomba MFB",
   "bucketType": "PAYROLL",
   "name": "Q3 Payroll Reserve",
   "description": "Accumulated payroll for Q3 2026",
   "status": "ACTIVE",
+  "balanceKobo": 50000000,
   "createdAt": "2026-06-18T..."
 }
 ```
@@ -100,14 +104,15 @@ Rename a treasury bucket.
 ---
 
 ### DELETE /treasury-buckets/:bucketRef
-Close a treasury bucket. Archives any pending rule executions (EC-02).
+Close a treasury bucket. The bucket must have a **zero balance** — settle or transfer funds out first.
 
 **Response 200:**
 ```json
 {
+  "id": "clx...",
   "bucketRef": "payroll-q3-2026",
   "status": "CLOSED",
-  "pendingExecutionsArchived": 0
+  "closedAt": "2026-06-18T..."
 }
 ```
 
@@ -120,39 +125,62 @@ Get the current balance of a treasury bucket (ledger-computed).
 ```json
 {
   "bucketRef": "payroll-q3-2026",
-  "balanceKobo": 50000000,
-  "balanceNgn": 500000,
-  "lastUpdatedAt": "2026-06-18T..."
+  "balanceKobo": 50000000
 }
 ```
 
-> Balance is computed as `SUM(INFLOW LedgerEntry.amountKobo) - SUM(OUTFLOW LedgerEntry.amountKobo)`.
-> No Nomba API call is made — the ledger is the source of truth.
+> Balance is computed as `SUM(CREDIT BucketLedgerEntry.amountKobo) - SUM(DEBIT BucketLedgerEntry.amountKobo)`.
+> No Nomba API call is made — the bucket ledger is the source of truth.
 
 ---
 
 ### GET /treasury-buckets/:bucketRef/statement
-Get transaction history (ledger entries) for a treasury bucket.
+Get the bucket ledger (append-only entries) for a treasury bucket.
 
 **Query params:**
 - `from` — ISO8601 datetime (inclusive)
 - `to` — ISO8601 datetime (inclusive)
-- `direction` — `INFLOW` | `OUTFLOW`
-- `page` — default `1`
-- `limit` — default `20`, max `100`
+- `entryType` — `CREDIT` | `DEBIT`
+- `cursor` — pagination cursor (entry `id`)
+- `limit` — default `50`, max `100`
 
 **Response 200:**
 ```json
 {
-  "data": [ /* LedgerEntry[] ordered by receivedAt DESC */ ],
-  "pagination": { "total": 5, "page": 1, "limit": 20 }
+  "data": [ /* BucketLedgerEntry[] ordered by createdAt DESC */ ],
+  "nextCursor": "clx..."
+}
+```
+
+---
+
+### POST /treasury-buckets/:bucketRef/transfer
+Move funds from this bucket to another bucket in the same business. Pure internal ledger operation — **no Nomba call**. Debits the source and credits the destination atomically.
+
+**Request:**
+```json
+{
+  "destinationBucketRef": "tax-reserve",
+  "amountKobo": 2500000,
+  "narration": "Move surplus operating funds to reserve"
+}
+```
+
+**Response 200:**
+```json
+{
+  "reference": "xfer_...",
+  "amountKobo": 2500000,
+  "sourceBalanceKobo": 47500000,
+  "destinationBalanceKobo": 2500000,
+  "status": "COMPLETED"
 }
 ```
 
 ---
 
 ### POST /treasury-buckets/:bucketRef/withdraw
-Withdraw funds from a treasury bucket to an external bank account (EC-07).
+Settle funds out of a treasury bucket to an **external bank account** (EC-07). This is the only Nomba call in the treasury layer. The bucket row is locked for the duration of the balance check + debit to prevent concurrent overdraw.
 
 **Request:**
 ```json
@@ -160,20 +188,19 @@ Withdraw funds from a treasury bucket to an external bank account (EC-07).
   "amountKobo": 10000000,
   "destinationAccountNumber": "0123456789",
   "destinationBankCode": "044",
+  "destinationAccountName": "AjoApp Payroll",
   "narration": "Payroll disbursement"
 }
 ```
 
+> Destination bank fields are optional if the bucket has a saved `BANK_ACCOUNT` settlement destination; otherwise all three are required.
+
 **Response 200:**
 ```json
 {
-  "ledgerEntryId": "clx...",
-  "bucketRef": "payroll-q3-2026",
+  "transactionRef": "wdr_...",
   "amountKobo": 10000000,
-  "amountNgn": 100000,
-  "newBalanceKobo": 40000000,
-  "newBalanceNgn": 400000,
-  "completedAt": "2026-06-18T..."
+  "status": "COMPLETED"
 }
 ```
 
@@ -182,7 +209,7 @@ Withdraw funds from a treasury bucket to an external bank account (EC-07).
 {
   "statusCode": 422,
   "code": "INSUFFICIENT_BUCKET_BALANCE",
-  "message": "Bucket balance 50000000 kobo is less than requested 100000000 kobo",
+  "message": "Insufficient bucket balance. Required: 100000000 kobo, Available: 50000000 kobo",
   "timestamp": "2026-06-18T...",
   "path": "/api/v1/treasury-buckets/payroll-q3-2026/withdraw",
   "requestId": "req_01J..."

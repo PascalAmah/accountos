@@ -65,13 +65,17 @@ Rules are validated by Zod at the API boundary — invalid rules are rejected be
 - **Audit log:** every state change (rename, suspension, closure, tier change, rule execution) recorded with before/after snapshots — insert-only, never deleted
 
 ### 2.4 Treasury Layer
-Businesses provision **treasury bucket DVAs** — dedicated virtual accounts for business purposes (Payroll, Tax Reserve, Savings, Operations, Marketing, Custom). Inflows from customer DVAs automatically split to treasury buckets via **percentage-based `RELEASE_FUNDS` rules** — no manual transfers needed. Each business withdraws from buckets to external bank accounts on demand, with instant balance checks and atomic withdrawal-to-ledger synchronization.
+
+Businesses provision **logical treasury buckets** — internal sub-ledgers for distinct purposes (Payroll, Tax Reserve, Savings, Operations, Marketing, Custom). Buckets are NOT bank accounts or Nomba DVAs; money physically lives in the business's Nomba account, and buckets record logical ownership via an immutable bucket ledger.
+
+When customer payments arrive, percentage-based **`RELEASE_FUNDS` rules** automatically allocate funds to buckets as pure ledger entries — no Nomba API call per allocation. Each business withdraws from buckets to external bank accounts on demand via the **Settlement lifecycle**: PENDING (reserves balance) → PROCESSING → COMPLETED (writes DEBIT + calls Nomba) or FAILED (releases reservation, no DEBIT written).
 
 Key design points:
-- **Two-tier DVA architecture**: Customer DVA receives inflow → percentage rules fire → funds transfer directly to Treasury Bucket DVA via Nomba transfer API → business has real NUBAN for each bucket
-- **Direct fund flow**: No master account; each business's funds flow through their own Nomba wallet. AccountOS is the orchestrator, never the custodian.
-- **Ledger-computed balance**: Treasury bucket balance = `SUM(INFLOW) - SUM(OUTFLOW)` from LedgerEntry records. No Nomba API call needed; the ledger is the source of truth.
-- **Withdrawal atomicity**: Balance check → OUTFLOW LedgerEntry insert → Nomba transfer all in one database transaction. If transfer fails, the entire transaction rolls back — balance integrity preserved.
+- **Logical-bucket architecture**: Buckets are internal sub-ledgers, not Nomba DVAs. A single business Nomba account holds all funds; buckets describe how funds are logically owned and allocated.
+- **Allocation is ledger-only**: Inflows split to buckets via immutable BucketLedgerEntry writes. No Nomba API calls during allocation — allocation is a pure database operation.
+- **Ledger-computed balance**: Bucket balance = latest BucketLedgerEntry.cumulativeAmountKobo (O(1) indexed lookup). Available balance = ledger balance − reserved balance (SUM of in-flight Settlement rows).
+- **Settlement lifecycle**: The only Treasury operation that calls Nomba. Reservation prevents double-spend; DEBIT is written only after Nomba confirms the transfer (ADR #13). Failed settlements release the reservation without debiting the bucket.
+- **Immutable bucket ledger**: BucketLedgerEntry rows are append-only (enforced by DB trigger). Balances are always derivable from the ledger.
 
 ---
 
@@ -111,7 +115,7 @@ A buyer pays into a virtual account tied to a specific order. Funds are held. Re
 One virtual account per tenant, all bound under a shared landlord `Customer` via `parentId`. Rules reconcile inflows against expected rent: underpayment fires a webhook; 35 days with no inflow escalates automatically. The landlord queries a single ledger view across all tenant accounts.
 
 ### 3.4 Treasury Buckets for Multi-Purpose Fund Allocation
-A business (ajo group administrator, school, marketplace, or microfinance institution) provisions treasury bucket DVAs for distinct purposes: one for **Payroll**, one for **Tax Reserve**, one for **Savings Pool**. When customer payments arrive, percentage-based rules automatically split them:
+A business (ajo group administrator, school, marketplace, or microfinance institution) provisions logical treasury buckets for distinct purposes: one for **Payroll**, one for **Tax Reserve**, one for **Savings Pool**. When customer payments arrive, percentage-based rules automatically split them as internal ledger allocations (no Nomba call per split):
 
 ```json
 {
@@ -122,28 +126,28 @@ A business (ajo group administrator, school, marketplace, or microfinance instit
       "trigger": "inflow_received",
       "condition": { "amount_gte": 0 },
       "action": "release_funds",
-      "payload": { "destinationAccountRef": "treasury-payroll", "percentage": 60 },
+      "payload": { "destinationAccountRef": "payroll", "percentage": 60 },
       "priority": 0
     },
     {
       "trigger": "inflow_received",
       "condition": { "amount_gte": 0 },
       "action": "release_funds",
-      "payload": { "destinationAccountRef": "treasury-tax-reserve", "percentage": 25 },
+      "payload": { "destinationAccountRef": "tax-reserve", "percentage": 25 },
       "priority": 1
     },
     {
       "trigger": "inflow_received",
       "condition": { "amount_gte": 0 },
       "action": "release_funds",
-      "payload": { "destinationAccountRef": "treasury-savings", "percentage": 15 },
+      "payload": { "destinationAccountRef": "savings", "percentage": 15 },
       "priority": 2
     }
   ]
 }
 ```
 
-As inflows arrive, 60% auto-transfers to the payroll bucket, 25% to tax reserve, 15% to savings — each backed by a real Nomba NUBAN. Withdrawal from each bucket to external bank accounts happens on-demand via `POST /treasury-buckets/:ref/withdraw`, with instant balance verification and atomic fund transfer.
+As inflows arrive, 60% is ledger-allocated to the payroll bucket, 25% to tax reserve, 15% to savings — each as an immutable BucketLedgerEntry credit. Settlement to external bank accounts uses the durable Settlement lifecycle: `POST /treasury-buckets/:ref/withdraw` creates a PENDING reservation, calls Nomba only once, and writes the DEBIT only on success.
 
 ### 3.5 Other Patterns (same infrastructure, different rule sets)
 
@@ -179,9 +183,9 @@ As inflows arrive, 60% auto-transfers to the payroll bucket, 25% to tax reserve,
 | **EC-04** | Duplicate webhook delivery | `ProcessedWebhookEvent` lookup on Nomba's event ID (or the business's custom event ID) rejects reprocessing before any rule evaluation runs. Duplicate is logged to audit, not executed. Return `200 OK` to prevent Nomba retries. |
 | **EC-05** | Conflicting rules on the same trigger | Resolved deterministically by `executionModel`: `SEQUENTIAL` evaluates rules in `priority` order and stops on first match; `PARALLEL` fires all matching rules. Behavior is explicit and documented — never undefined. |
 | **EC-06** | Nomba API failure during rule action | `RuleExecution` state transitions: `PENDING → RETRYING` (enqueued in BullMQ with exponential backoff: 1 min, 5 min, 15 min, 1 hr, 4 hr). After 5 failed attempts: `RETRYING → FAILED`. Nothing marked `COMPLETED` until the downstream call actually succeeds. |
-| **EC-07** | Treasury withdrawal with insufficient balance | `POST /treasury-buckets/:ref/withdraw` checks balance before any Nomba API call or database write. If balance < requested amount, return `422 INSUFFICIENT_BUCKET_BALANCE` immediately and do not proceed. Balance computed from LedgerEntry records (`SUM INFLOW - SUM OUTFLOW`). |
+| **EC-07** | Treasury withdrawal with insufficient available balance | Settlement reservation (PENDING) prevents double-spend. `POST /treasury-buckets/:ref/withdraw` checks `availableKobo = ledgerBalance − reservedKobo` before creating a Settlement record. If available < requested, return `422 INSUFFICIENT_BUCKET_BALANCE` before any Nomba call. |
 | **EC-08** | Percentage-based RELEASE_FUNDS rules exceed 100% | `PUT /accounts/:ref/rules` or `POST /accounts` with multiple PARALLEL `release_funds` rules validates that SUM(all percentage fields) ≤ 100. Reject with `400 INVALID_RULE_SET` if validation fails. Check runs at write time, not execution time. |
-| **EC-09** | Unexpected treasury inflow (not via RELEASE_FUNDS) | If a treasury bucket receives an inflow outside the normal RELEASE_FUNDS flow (e.g. manual Nomba transfer), the webhook processor treats it as a standard inflow: writes LedgerEntry, evaluates rules, maintains reconciliation status. Ledger balance reflects all inflows regardless of source. |
+| **EC-09** | Nomba API failure during settlement | Settlement → FAILED with `failureReason`; reservation is released; no DEBIT BucketLedgerEntry is ever written. The bucket's available balance is restored immediately. ADR #13: never debit a bucket until the transfer succeeds. |
 
 ---
 
