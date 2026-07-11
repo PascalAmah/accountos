@@ -28,6 +28,7 @@ const envSchema = z.object({
   NOMBA_CLIENT_ID: z.string().default(''),
   NOMBA_CLIENT_SECRET: z.string().default(''),
   NOMBA_ACCOUNT_ID: z.string().default(''),
+  NOMBA_SUB_ACCOUNT_ID: z.string().default(''),
   NOMBA_WEBHOOK_HMAC_SECRET: z.string().default(''),
   NOMBA_MOCK_MODE: z
     .string()
@@ -38,6 +39,10 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z
     .string()
     .min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
+
+  // CORS
+  CORS_ORIGINS: z.string().default('*'),
+
   // Rate limiting
   THROTTLE_ADMIN_LIMIT: z.coerce.number().default(10),
   THROTTLE_ADMIN_TTL: z.coerce.number().default(60000),

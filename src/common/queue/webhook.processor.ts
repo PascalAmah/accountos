@@ -3,6 +3,7 @@ import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LedgerService } from '../../ledger/ledger.service';
 import { AuditService } from '../../audit/audit.service';
@@ -60,7 +61,7 @@ export class WebhookProcessorService extends WorkerHost {
       }
 
       // ── Step 2: Account lookup ─────────────────────────────────────────
-      const account = await this.prisma.account.findFirst({
+      const account = await this.prisma.account.findUnique({
         where: { accountNumber: payload.accountNumber },
         include: { customer: true },
       });
@@ -99,6 +100,39 @@ export class WebhookProcessorService extends WorkerHost {
           'Custom event — skipping ledger write, evaluating rules',
         );
 
+        // Idempotency (M1/M2): claim the event BEFORE executing rules. Custom
+        // events have no ledger row to dedup on, so the ProcessedEvent unique
+        // constraint is the gate — concurrent/retried duplicates fail here and
+        // are discarded before any rule fires.
+        try {
+          await this.prisma.processedEvent.create({
+            data: {
+              eventId: payload.eventId,
+              eventType: payload.eventType ?? 'CUSTOM_EVENT',
+              accountRef: account.accountRef,
+              businessId,
+              payload: payload as unknown as Prisma.InputJsonValue,
+            },
+          });
+        } catch (err) {
+          if (
+            err instanceof PrismaClientKnownRequestError &&
+            err.code === 'P2002'
+          ) {
+            this.logger.warn(
+              { ...logMeta },
+              'Duplicate custom event discarded',
+            );
+            await this.auditService.log({
+              actor: 'system',
+              action: 'DUPLICATE_EVENT_DISCARDED',
+              metadata: { eventId: payload.eventId },
+            });
+            return;
+          }
+          throw err;
+        }
+
         // Evaluate rules for custom event matching
         const matchingRules = await this.ruleEngine.evaluate({
           accountId: account.id,
@@ -133,7 +167,6 @@ export class WebhookProcessorService extends WorkerHost {
           }
         }
 
-        // Write ProcessedEvent and audit
         await this.auditService.log({
           actor: 'system',
           action: 'CUSTOM_EVENT_PROCESSED',
@@ -143,16 +176,6 @@ export class WebhookProcessorService extends WorkerHost {
             eventId: payload.eventId,
             eventType: payload.eventType,
             matchedRules: matchingRules.length,
-          },
-        });
-
-        await this.prisma.processedEvent.create({
-          data: {
-            eventId: payload.eventId,
-            eventType: payload.eventType ?? 'CUSTOM_EVENT',
-            accountRef: account.accountRef,
-            businessId,
-            payload: payload as unknown as Prisma.InputJsonValue,
           },
         });
 
@@ -177,7 +200,7 @@ export class WebhookProcessorService extends WorkerHost {
             senderBankCode: payload.senderBankCode,
             narration: payload.narration,
             customerNameSnapshot: account.customer?.displayName ?? 'Unknown',
-            kycTierAtTime: account.customer?.kycTier ?? 'TIER_1',
+            kycTierAtTime: account.customer?.kycTier ?? 'TIER_0',
           },
           'FLAGGED',
         );
@@ -239,7 +262,7 @@ export class WebhookProcessorService extends WorkerHost {
           senderBankCode: payload.senderBankCode,
           narration: payload.narration,
           customerNameSnapshot: account.customer?.displayName ?? 'Unknown',
-          kycTierAtTime: account.customer?.kycTier ?? 'TIER_1',
+          kycTierAtTime: account.customer?.kycTier ?? 'TIER_0',
         },
         'PENDING',
       );
@@ -311,95 +334,9 @@ export class WebhookProcessorService extends WorkerHost {
                 }
               }
 
-              // ── Steps 10–11: Treasury bucket OUTFLOW + ALLOCATE_FUNDS audit ──
-              // When a RELEASE_FUNDS rule targets a treasury bucket and succeeded,
-              // write the corresponding OUTFLOW LedgerEntry on the bucket account
-              // so its balance reflects the inflow allocation.
-              if (
-                result.status === 'COMPLETED' &&
-                evaluatedRule.rule.action === 'RELEASE_FUNDS'
-              ) {
-                const rulePayload = (evaluatedRule.rule.payload ??
-                  {}) as Record<string, unknown>;
-                const destinationAccountRef =
-                  rulePayload.destinationAccountRef as string | undefined;
-
-                if (destinationAccountRef) {
-                  const destinationAccount =
-                    await this.prisma.account.findFirst({
-                      where: {
-                        accountRef: destinationAccountRef,
-                        businessId,
-                        accountType: 'TREASURY_BUCKET',
-                      },
-                      select: { id: true, accountRef: true },
-                    });
-
-                  if (destinationAccount) {
-                    // Compute the transfer amount (same logic as rule engine)
-                    const percentage = rulePayload.percentage as
-                      | number
-                      | undefined;
-                    const amountKobo = rulePayload.amountKobo as
-                      | number
-                      | undefined;
-                    let transferAmountKobo: bigint;
-
-                    if (percentage !== undefined) {
-                      transferAmountKobo = BigInt(
-                        Math.floor(
-                          (percentage / 100) *
-                            Number(ledgerEntryRecord.amountKobo),
-                        ),
-                      );
-                    } else if (amountKobo !== undefined) {
-                      transferAmountKobo = BigInt(amountKobo);
-                    } else {
-                      transferAmountKobo = 0n;
-                    }
-
-                    if (transferAmountKobo > 0n) {
-                      // Step 10: Write INFLOW on the treasury bucket account
-                      // (the bucket is *receiving* money from the RELEASE_FUNDS allocation,
-                      //  so this must be an INFLOW entry, not an OUTFLOW)
-                      await this.ledgerService.writeInflow(
-                        {
-                          accountId: destinationAccount.id,
-                          nombaTransactionRef: `alloc_${payload.transactionRef}_${destinationAccount.id.slice(0, 8)}`,
-                          nombaEventId: `alloc_${payload.eventId}_${destinationAccount.id.slice(0, 8)}`,
-                          amountKobo: Number(transferAmountKobo),
-                          narration: `RELEASE_FUNDS allocation from ${account.accountRef}`,
-                          customerNameSnapshot: 'System',
-                          kycTierAtTime: 'TIER_1',
-                        },
-                        'MATCHED',
-                      );
-
-                      // Step 11: Write ALLOCATE_FUNDS AuditLogEntry on the bucket
-                      await this.auditService.log({
-                        actor: 'system',
-                        action: 'ALLOCATE_FUNDS',
-                        accountId: destinationAccount.id,
-                        businessId,
-                        metadata: {
-                          sourceAccountRef: account.accountRef,
-                          destinationAccountRef: destinationAccount.accountRef,
-                          amountKobo: transferAmountKobo.toString(),
-                          nombaTransactionRef: payload.transactionRef,
-                        },
-                      });
-
-                      this.logger.log(
-                        {
-                          destinationAccountRef,
-                          transferAmountKobo: transferAmountKobo.toString(),
-                        },
-                        'Treasury bucket INFLOW written (ALLOCATE_FUNDS)',
-                      );
-                    }
-                  }
-                }
-              }
+              // Treasury allocation (RELEASE_FUNDS → bucket credit) is handled
+              // entirely inside RuleEngineService.execute() as an internal ledger
+              // operation. No Nomba call, no bucket INFLOW is written here.
             }
           }
         }
@@ -463,6 +400,26 @@ export class WebhookProcessorService extends WorkerHost {
         'Inflow processing complete',
       );
     } catch (err) {
+      // A unique-constraint conflict means a concurrent/duplicate delivery
+      // already claimed this event (its ledger entry or ProcessedEvent row).
+      // The row lock in writeInflow serializes same-account inflows, so the
+      // loser conflicts at the ledger write — before any rule fires. Discard
+      // idempotently instead of letting BullMQ retry a duplicate forever.
+      if (
+        err instanceof PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        this.logger.warn(
+          { ...logMeta },
+          'Duplicate event race — discarded (unique conflict)',
+        );
+        await this.auditService.log({
+          actor: 'system',
+          action: 'DUPLICATE_EVENT_DISCARDED',
+          metadata: { eventId: payload.eventId, reason: 'unique_conflict' },
+        });
+        return;
+      }
       this.logger.error({ ...logMeta, err }, 'Webhook processing failed');
       throw err; // BullMQ will retry based on job options
     }

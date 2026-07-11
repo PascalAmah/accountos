@@ -15,7 +15,7 @@ Four capabilities layered on top of Nomba's DVA primitive:
 - **Identity Layer** — Customer entities with KYC tiers (TIER_0–TIER_3), BVN references, parent-child hierarchies, and append-only name history. Every ledger entry carries a customer name snapshot so historical records never change meaning.
 - **Rules Engine** — Attach declarative JSON rules to any account. Triggers (`INFLOW_RECEIVED`, `TIME_ELAPSED`, `CUSTOM_EVENT`, `TIER_CHANGED`), conditions, and actions (`SUSPEND_ACCOUNT`, `RELEASE_FUNDS`, `NOTIFY_WEBHOOK`, etc.) validated by Zod at write time — never at execution time.
 - **Persistent State + Audit** — Immutable ledger, rule execution tracking with retry queue, and an insert-only audit log of every lifecycle event.
-- **Treasury Layer** — Businesses provision treasury bucket DVAs (Payroll, Tax Reserve, Savings, etc.) and split incoming customer payments across them automatically via percentage-based `RELEASE_FUNDS` rules. Withdraw to external bank accounts on demand.
+- **Treasury Layer** — Businesses provision **logical treasury buckets** (Payroll, Tax Reserve, Savings, etc.) — internal sub-ledgers, not bank accounts. Incoming customer payments are split across buckets automatically via percentage-based `RELEASE_FUNDS` rules as pure ledger allocations (no Nomba call). Move funds between buckets internally, and settle to an external bank account on demand.
 
 ---
 
@@ -27,7 +27,7 @@ Four capabilities layered on top of Nomba's DVA primitive:
 
 **Rent collection** — One DVA per tenant under a shared landlord customer. Underpayment fires a webhook; 35 days with no inflow escalates automatically.
 
-**Treasury allocation** — School, ajo group, or marketplace splits every inflow: 60% → Payroll bucket, 25% → Tax Reserve, 15% → Savings. Each bucket is a real Nomba NUBAN. No master-account hop.
+**Treasury allocation** — School, ajo group, or marketplace splits every inflow: 60% → Payroll bucket, 25% → Tax Reserve, 15% → Savings. Each bucket is a logical sub-ledger; money stays in the business's single Nomba account until settlement. Allocation is a pure ledger write — no per-split Nomba transfer.
 
 ---
 
@@ -194,6 +194,8 @@ All endpoints are under `/api/v1`. Auth via `x-api-key` header. Admin routes use
 
 Amounts are always in **kobo** (integer). ₦50,000 = `5000000`.
 
+Mutating POST endpoints support an `Idempotency-Key` header for safe retry. The first request's response is stored; subsequent requests with the same key and body replay the stored response. A different body with the same key returns `409 Conflict`.
+
 ### Auth & API keys
 
 | Method | Endpoint | Auth | Purpose |
@@ -251,14 +253,17 @@ Amounts are always in **kobo** (integer). ₦50,000 = `5000000`.
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/treasury-buckets` | api-key | Provision a treasury bucket DVA |
+| `POST` | `/treasury-buckets` | api-key | Provision a logical treasury bucket |
 | `GET` | `/treasury-buckets` | api-key | List all buckets (paginated) |
-| `GET` | `/treasury-buckets/:ref` | api-key | Get bucket details with balance |
+| `GET` | `/treasury-buckets/:ref` | api-key | Get bucket details with balance, available & reserved |
 | `PATCH` | `/treasury-buckets/:ref` | api-key | Rename a bucket |
-| `DELETE` | `/treasury-buckets/:ref` | api-key | Close a bucket |
-| `GET` | `/treasury-buckets/:ref/balance` | api-key | Ledger-computed balance |
-| `GET` | `/treasury-buckets/:ref/statement` | api-key | Paginated ledger statement |
-| `POST` | `/treasury-buckets/:ref/withdraw` | api-key | Withdraw to external bank account (EC-07) |
+| `DELETE` | `/treasury-buckets/:ref` | api-key | Close a bucket (must be zero-balance, no pending settlements) |
+| `GET` | `/treasury-buckets/:ref/balance` | api-key | { balanceKobo, availableKobo, reservedKobo } |
+| `GET` | `/treasury-buckets/:ref/statement` | api-key | Paginated bucket ledger statement |
+| `POST` | `/treasury-buckets/:ref/transfer` | api-key | Move funds to another bucket (internal, no Nomba) |
+| `POST` | `/treasury-buckets/:ref/withdraw` | api-key | Settle to external bank (Settlement lifecycle: PENDING → COMPLETED) |
+| `GET` | `/treasury-buckets/:ref/settlements` | api-key | List settlements for a bucket |
+| `GET` | `/settlements/:id` | api-key | Get a single settlement by ID |
 
 ### Webhooks & demo
 
@@ -272,7 +277,8 @@ Amounts are always in **kobo** (integer). ₦50,000 = `5000000`.
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/health` | none | DB + Redis connectivity check |
+| `GET` | `/health` | none | DB + Redis connectivity + queue depth |
+| `GET` | `/metrics` | none | Prometheus metrics (inflows, rules, settlements, queue depth) |
 
 Full spec in [`technical-docs/API_SPEC.md`](./technical-docs/API_SPEC.md).
 
@@ -289,7 +295,7 @@ Nomba API / Business Backends
    ├── Rules Engine (Zod-validated, SEQUENTIAL or PARALLEL)
    ├── Ledger Service (append-only)
    ├── Audit Service (insert-only)
-   └── Treasury Service (two-tier DVA flow, atomic withdrawal)
+   └── Treasury Service (logical buckets, internal allocation, bank settlement)
          │
     ┌────┴────┐
  PostgreSQL  Redis
@@ -309,9 +315,9 @@ Each business's Nomba credentials are stored isolated per tenant. AccountOS is t
 | EC-04 | Duplicate webhook delivery | Idempotency check before any rule evaluation |
 | EC-05 | Conflicting rules on same trigger | Deterministic: SEQUENTIAL stops on first match; PARALLEL fires all |
 | EC-06 | Nomba API failure during rule action | BullMQ retry with exponential backoff; max 5 attempts |
-| EC-07 | Treasury withdrawal insufficient balance | 422 before any Nomba call; ledger integrity preserved |
+| EC-07 | Treasury withdrawal insufficient balance | Reservation via Settlement(PENDING) prevents double-spend; 422 before any Nomba call |
 | EC-08 | RELEASE_FUNDS percentages exceed 100% | Rejected at write time with `400 INVALID_RULE_SET` |
-| EC-09 | Unexpected treasury inflow | Treated as standard inflow; ledger reconciliation maintained |
+| EC-09 | Nomba API failure during settlement | Settlement → FAILED; reservation released; no DEBIT written (ADR #13) |
 
 ---
 

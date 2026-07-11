@@ -49,7 +49,7 @@ describe('WebhookProcessorService', () => {
         create: jest.fn().mockResolvedValue({}),
       },
       account: {
-        findFirst: jest.fn().mockResolvedValue(mockAccount),
+        findUnique: jest.fn().mockResolvedValue(mockAccount),
       },
       ledgerEntry: {
         findFirst: jest.fn().mockResolvedValue({
@@ -117,7 +117,7 @@ describe('WebhookProcessorService', () => {
   // ── Unknown account ───────────────────────────────────────────────────────
 
   it('handles unknown account gracefully', async () => {
-    mockPrisma.account.findFirst.mockResolvedValue(null);
+    mockPrisma.account.findUnique.mockResolvedValue(null);
 
     await service.process(makeJob());
 
@@ -131,7 +131,7 @@ describe('WebhookProcessorService', () => {
   // ── SUSPENDED gate ────────────────────────────────────────────────────────
 
   it('flags inflow for SUSPENDED accounts without evaluating rules', async () => {
-    mockPrisma.account.findFirst.mockResolvedValue({
+    mockPrisma.account.findUnique.mockResolvedValue({
       ...mockAccount,
       status: 'SUSPENDED',
     });
@@ -148,7 +148,7 @@ describe('WebhookProcessorService', () => {
   // ── CLOSED account ────────────────────────────────────────────────────────
 
   it('discards inflow for CLOSED accounts', async () => {
-    mockPrisma.account.findFirst.mockResolvedValue({
+    mockPrisma.account.findUnique.mockResolvedValue({
       ...mockAccount,
       status: 'CLOSED',
     });
@@ -168,7 +168,7 @@ describe('WebhookProcessorService', () => {
   // ── EXPIRED account ───────────────────────────────────────────────────────
 
   it('discards inflow for EXPIRED accounts', async () => {
-    mockPrisma.account.findFirst.mockResolvedValue({
+    mockPrisma.account.findUnique.mockResolvedValue({
       ...mockAccount,
       status: 'EXPIRED',
     });
@@ -283,7 +283,7 @@ describe('WebhookProcessorService', () => {
   // ── Name snapshot captured at processing time ─────────────────────────────
 
   it('captures customer name snapshot from the database at processing time', async () => {
-    mockPrisma.account.findFirst.mockResolvedValue({
+    mockPrisma.account.findUnique.mockResolvedValue({
       ...mockAccount,
       customer: { displayName: 'Alice Renamed', kycTier: 'TIER_2' },
     });

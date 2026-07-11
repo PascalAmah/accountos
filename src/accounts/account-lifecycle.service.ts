@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
-  KycTier,
   Prisma,
   RuleAction,
   RuleTrigger,
@@ -36,15 +35,17 @@ export class AccountLifecycleService {
   // ─── provisionAccount (POST /accounts) ───────────────────────────────────
 
   /**
-   * Provision a new virtual account for a customer or treasury bucket.
+   * Provision a new virtual account for a customer.
    *
    * Flow:
    * 1. Validate the rule set via rule-schema.ts
-   * 2. Resolve the customer (skip if TREASURY_BUCKET — no customer linked)
-   * 3. Call Nomba to provision the DVA (all account types get a DVA)
-   * 4. Create Account + Rules in a single Prisma transaction
-   * 5. Write ACCOUNT_PROVISIONED AuditLogEntry
+   * 2. Resolve the customer (scoped to business)
+   * 3. Call Nomba to provision the DVA
+   * 4. Create Account + Rules
+   * 5. Write ACCOUNT_CREATED AuditLogEntry
    * 6. Return the account with its rule set
+   *
+   * Treasury buckets are NOT accounts — see TreasuryService / TREASURY_BUILD.md.
    */
   async provisionAccount(dto: ProvisionAccountDto, businessId: string) {
     // Step 1: Validate the rule set via rule-schema.ts
@@ -75,43 +76,20 @@ export class AccountLifecycleService {
       });
     }
 
-    // Step 3: Resolve customer (only for customer accounts)
-    let customer: {
-      id: string;
-      kycTier: string;
-      bvnRef: string | null;
-    } | null = null;
+    // Step 3: Resolve customer (scoped to business)
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: dto.customerId, businessId },
+      select: { id: true, kycTier: true, bvnRef: true },
+    });
 
-    if (dto.accountType !== 'TREASURY_BUCKET') {
-      if (!dto.customerId) {
-        throw new BadRequestException({
-          message: 'customerId is required for non-treasury accounts',
-          code: ErrorCodes.VALIDATION_ERROR,
-        });
-      }
-
-      customer = await this.prisma.customer.findFirst({
-        where: { id: dto.customerId, businessId },
-        select: { id: true, kycTier: true, bvnRef: true },
+    if (!customer) {
+      throw new NotFoundException({
+        message: 'Customer not found',
+        code: ErrorCodes.CUSTOMER_NOT_FOUND,
       });
-
-      if (!customer) {
-        throw new NotFoundException({
-          message: 'Customer not found',
-          code: ErrorCodes.CUSTOMER_NOT_FOUND,
-        });
-      }
     }
 
-    // Step 4: Call Nomba DVA provisioning for ALL account types (treasury buckets are DVAs too)
-    let nombaResult: {
-      accountRef: string;
-      accountNumber: string;
-      bankName: string;
-      accountName: string;
-      bankAccountName: string;
-    } | null = null;
-
+    // Step 4: Resolve business + provision the DVA at Nomba
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
     });
@@ -123,58 +101,69 @@ export class AccountLifecycleService {
       });
     }
 
-    nombaResult = await this.nombaClient.provisionDva(business, {
+    const nombaResult = await this.nombaClient.provisionDva(business, {
       accountRef: dto.accountRef,
       accountName: dto.accountName,
-      bvn: customer?.bvnRef ?? undefined,
+      bvn: customer.bvnRef ?? undefined,
     });
 
-    // Step 5: Create Account + Rules in transaction
-    const account = await this.prisma.account.create({
-      data: {
-        accountRef: dto.accountRef,
-        nombaAccountId: nombaResult.accountRef,
-        accountNumber: nombaResult.accountNumber,
-        bankName: nombaResult.bankName,
-        accountNameAtCreation: dto.accountName,
-        executionModel: dto.executionModel ?? 'SEQUENTIAL',
-        accountType: dto.accountType ?? 'CUSTOMER_ACCOUNT',
-        bucketType: dto.bucketType ?? null,
-        description: dto.description ?? null,
-        customerId: customer?.id ?? null,
-        businessId,
-        rules: {
-          create: dto.rules.map((r) => ({
-            trigger: toRuleTrigger(r.trigger),
-            condition: r.condition as Prisma.InputJsonValue,
-            action: toRuleAction(r.action),
-            payload:
-              r.payload !== undefined
-                ? (r.payload as Prisma.InputJsonValue)
-                : Prisma.JsonNull,
-            priority: r.priority ?? 0,
-            kycTierAtCreation: (customer?.kycTier ?? KycTier.TIER_1) as KycTier,
-          })),
+    // Step 5: Create Account + Rules.
+    // The Nomba DVA already exists at this point; if the DB write fails (e.g. a
+    // unique conflict under a race), compensate by expiring the orphaned DVA so
+    // we don't leave a live virtual account with no record of it.
+    let account;
+    try {
+      account = await this.prisma.account.create({
+        data: {
+          accountRef: dto.accountRef,
+          nombaAccountId: nombaResult.accountRef,
+          accountNumber: nombaResult.accountNumber,
+          bankName: nombaResult.bankName,
+          accountNameAtCreation: dto.accountName,
+          executionModel: dto.executionModel ?? 'SEQUENTIAL',
+          customerId: customer.id,
+          businessId,
+          rules: {
+            create: dto.rules.map((r) => ({
+              trigger: toRuleTrigger(r.trigger),
+              condition: r.condition as Prisma.InputJsonValue,
+              action: toRuleAction(r.action),
+              payload:
+                r.payload !== undefined
+                  ? (r.payload as Prisma.InputJsonValue)
+                  : Prisma.JsonNull,
+              priority: r.priority ?? 0,
+              kycTierAtCreation: customer.kycTier,
+            })),
+          },
         },
-      },
-      include: {
-        rules: {
-          orderBy: { priority: 'asc' },
+        include: {
+          rules: {
+            orderBy: { priority: 'asc' },
+          },
         },
-      },
-    });
+      });
+    } catch (err) {
+      await this.nombaClient
+        .expireAccount(business, nombaResult.accountRef)
+        .catch((cleanupErr) =>
+          this.logger.error(
+            { accountRef: nombaResult.accountRef, err: cleanupErr as Error },
+            'Failed to expire orphaned Nomba DVA after account create failure',
+          ),
+        );
+      throw err;
+    }
 
     // Step 6: Audit
     await this.auditService.log({
       actor: 'system',
       action: AuditAction.ACCOUNT_CREATED,
       accountId: account.id,
-      customerId: customer?.id ?? undefined,
+      customerId: customer.id,
       businessId,
       afterState: {
         accountRef: account.accountRef,
-        accountType: account.accountType,
-        bucketType: account.bucketType,
         executionModel: account.executionModel,
         ruleCount: account.rules.length,
       },
@@ -183,7 +172,6 @@ export class AccountLifecycleService {
     this.logger.log(
       {
         accountRef: account.accountRef,
-        accountType: account.accountType,
         ruleCount: account.rules.length,
       },
       'Account provisioned',

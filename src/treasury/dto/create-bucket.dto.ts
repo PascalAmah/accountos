@@ -6,8 +6,8 @@ import {
   MinLength,
   MaxLength,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { BucketType } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BucketType, SettlementDestinationType } from '@prisma/client';
 
 export class CreateBucketDto {
   @ApiProperty({
@@ -49,4 +49,35 @@ export class CreateBucketDto {
   @IsOptional()
   @MaxLength(500)
   description?: string;
+
+  // ── Optional settlement destination (where funds eventually settle to) ──
+
+  @ApiPropertyOptional({
+    description:
+      'Optional default settlement destination type. When BANK_ACCOUNT, withdrawals ' +
+      'may omit bank details and fall back to the saved values below.',
+    enum: SettlementDestinationType,
+    example: 'BANK_ACCOUNT',
+  })
+  @IsEnum(SettlementDestinationType)
+  @IsOptional()
+  settlementType?: SettlementDestinationType;
+
+  @ApiPropertyOptional({ description: 'Saved settlement account name' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  settlementAccountName?: string;
+
+  @ApiPropertyOptional({ description: 'Saved settlement account number' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  settlementAccountNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Saved settlement bank code' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(10)
+  settlementBankCode?: string;
 }

@@ -8,6 +8,7 @@ import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
 import { WEBHOOK_PROCESSING_QUEUE } from '../common/queue/queue.constants';
 import { ErrorCodes } from '../common/constants/error-codes';
 
@@ -48,6 +49,7 @@ export class WebhooksService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly authService: AuthService,
     @InjectQueue(WEBHOOK_PROCESSING_QUEUE)
     private readonly webhookQueue: Queue,
   ) {}
@@ -81,31 +83,25 @@ export class WebhooksService {
       });
     }
 
-    const account = await this.prisma.account.findFirst({
+    const account = await this.prisma.account.findUnique({
       where: { accountNumber },
       include: { customer: { include: { business: true } } },
     });
 
     if (!account) {
+      // Unknown account: we cannot verify the HMAC (no business secret to check
+      // against), so we MUST NOT enqueue a job or touch the DB — that would let
+      // an unauthenticated caller flood the queue with arbitrary accountNumbers.
+      // Log and acknowledge; a genuine misroute is investigated from logs.
       this.logger.warn(
         { accountNumber, eventId: body.eventId },
-        'Webhook received for unknown account',
+        'Webhook received for unknown account — discarded (unverifiable)',
       );
-      await this.enqueueInflow({
-        eventId: body.eventId,
-        transactionRef: body.data.transactionRef,
-        accountNumber: body.data.accountNumber,
-        amountKobo: body.data.amount,
-        senderName: body.data.senderName,
-        senderAccountNumber: body.data.senderAccountNumber,
-        senderBankCode: body.data.senderBankCode,
-        narration: body.data.narration,
-      });
       return { received: true };
     }
 
-    const secret = account.customer?.business?.nombaWebhookSecret;
-    if (!secret) {
+    const encryptedSecret = account.customer?.business?.nombaWebhookSecret;
+    if (!encryptedSecret) {
       throw new UnauthorizedException({
         message: 'Business has no webhook secret configured',
         code: ErrorCodes.INVALID_WEBHOOK_SIGNATURE,
@@ -119,13 +115,23 @@ export class WebhooksService {
       });
     }
 
+    // The webhook secret is encrypted at rest — Nomba signs with the plaintext,
+    // so we must decrypt before computing the expected HMAC.
+    const secret = this.authService.decryptWebhookSecret(encryptedSecret);
+
     const expected = crypto
       .createHmac('sha256', secret)
       .update(rawBody)
       .digest('hex');
 
+    const expectedBuf = Buffer.from(expected);
+    const providedBuf = Buffer.from(signature);
+
+    // timingSafeEqual throws on length mismatch — guard first so a malformed
+    // signature yields a clean 401 rather than a 500.
     if (
-      !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+      expectedBuf.length !== providedBuf.length ||
+      !crypto.timingSafeEqual(expectedBuf, providedBuf)
     ) {
       throw new UnauthorizedException({
         message: 'HMAC signature mismatch',

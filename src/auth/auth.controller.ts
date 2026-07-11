@@ -25,6 +25,7 @@ import { AuthService } from './auth.service';
 import { CreateApiKeyDto } from './dto/create-api-key.dto';
 import { RegisterBusinessDto } from './dto/register-business.dto';
 import { UpdateBusinessCredentialsDto } from './dto/update-business-credentials.dto';
+import { appConfig } from '../config/config';
 
 @ApiTags('auth')
 @Controller()
@@ -56,7 +57,12 @@ export class AuthController {
   @Public()
   @Post('businesses')
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ admin: { limit: 10, ttl: 60000 } })
+  @Throttle({
+    default: {
+      limit: appConfig.THROTTLE_ADMIN_LIMIT,
+      ttl: appConfig.THROTTLE_ADMIN_TTL,
+    },
+  })
   @ApiOperation({ summary: 'Register a new business' })
   @ApiHeader({
     name: 'x-admin-secret',
@@ -77,7 +83,12 @@ export class AuthController {
   @Public()
   @Patch('businesses/:id/credentials')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ admin: { limit: 10, ttl: 60000 } })
+  @Throttle({
+    default: {
+      limit: appConfig.THROTTLE_ADMIN_LIMIT,
+      ttl: appConfig.THROTTLE_ADMIN_TTL,
+    },
+  })
   @ApiOperation({
     summary: 'Update Nomba credentials for a business',
     description:
@@ -117,7 +128,12 @@ export class AuthController {
   @Public()
   @Post('api-keys')
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ admin: { limit: 10, ttl: 60000 } })
+  @Throttle({
+    default: {
+      limit: appConfig.THROTTLE_ADMIN_LIMIT,
+      ttl: appConfig.THROTTLE_ADMIN_TTL,
+    },
+  })
   @ApiOperation({ summary: 'Create a new API key for a business' })
   @ApiHeader({
     name: 'x-admin-secret',
