@@ -48,6 +48,13 @@ export class LedgerService {
     reconciliationStatus: ReconciliationStatus = 'PENDING',
   ): Promise<bigint> {
     const cumulativeAmountKobo = await this.prisma.$transaction(async (tx) => {
+      // Lock the account row FOR UPDATE so concurrent inflows to the SAME
+      // account serialize here. Without this, two concurrent inflows both read
+      // the same prior SUM and write duplicate cumulativeAmountKobo values,
+      // which can make cumulative_gte rules misfire or be missed. Different
+      // accounts are unaffected — they lock different rows.
+      await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id" = ${dto.accountId} FOR UPDATE`;
+
       const aggregate = await tx.ledgerEntry.aggregate({
         where: {
           accountId: dto.accountId,
@@ -71,7 +78,7 @@ export class LedgerService {
           senderBankCode: dto.senderBankCode ?? null,
           narration: dto.narration ?? null,
           customerNameSnapshot: dto.customerNameSnapshot ?? 'Unknown',
-          kycTierAtTime: dto.kycTierAtTime ?? 'TIER_1',
+          kycTierAtTime: dto.kycTierAtTime ?? 'TIER_0',
           cumulativeAmountKobo: priorTotal + BigInt(dto.amountKobo),
           reconciliationStatus,
           receivedAt: new Date(),
@@ -99,7 +106,7 @@ export class LedgerService {
         currency: 'NGN',
         narration: dto.narration,
         customerNameSnapshot: dto.customerNameSnapshot ?? 'System',
-        kycTierAtTime: dto.kycTierAtTime ?? 'TIER_1',
+        kycTierAtTime: dto.kycTierAtTime ?? 'TIER_0',
         cumulativeAmountKobo: dto.cumulativeAmountKobo ?? 0n,
         reconciliationStatus: 'PENDING',
         receivedAt: new Date(),
@@ -275,9 +282,27 @@ export class LedgerService {
         e.kycTierAtTime,
         e.reconciliationStatus,
         e.receivedAt.toISOString(),
-      ].join(','),
+      ]
+        .map((v) => this.csvCell(v))
+        .join(','),
     );
 
     return [header, ...rows].join('\n');
+  }
+
+  /**
+   * Render a single CSV cell safely.
+   *
+   * Prevents CSV injection: values beginning with =, +, -, @ (or tab/CR) are
+   * treated as formulas by spreadsheet software, so they are prefixed with a
+   * single quote. Values are always double-quoted and embedded quotes doubled,
+   * so commas/newlines/quotes in names or narrations can't corrupt the layout.
+   */
+  private csvCell(value: unknown): string {
+    let s = value === null || value === undefined ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) {
+      s = `'${s}`;
+    }
+    return `"${s.replace(/"/g, '""')}"`;
   }
 }

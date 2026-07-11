@@ -34,7 +34,7 @@ export class WriteOutflowDto {
 
   /**
    * Snapshot of the KYC tier at time of outflow.
-   * For treasury withdrawals (no customer), pass 'TIER_1' as a safe default.
+   * For system entries with no customer, defaults to 'TIER_0' (unverified).
    */
   @IsEnum(KycTier)
   @IsOptional()

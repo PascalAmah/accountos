@@ -9,7 +9,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ExecutionModel, AccountType, BucketType } from '@prisma/client';
+import { ExecutionModel } from '@prisma/client';
 
 export class RuleDefinition {
   @ApiProperty({
@@ -69,14 +69,13 @@ export class RuleDefinition {
 }
 
 export class ProvisionAccountDto {
-  @ApiPropertyOptional({
-    description:
-      'Customer ID. Required for `CUSTOMER_ACCOUNT`, omit for `TREASURY_BUCKET`.',
+  @ApiProperty({
+    description: 'Customer ID that owns this account.',
     example: 'cus_ck8d2f3g4h5j6k7l8m9n0',
   })
   @IsString()
-  @IsOptional()
-  customerId?: string;
+  @IsNotEmpty()
+  customerId!: string;
 
   @ApiProperty({
     description:
@@ -105,34 +104,6 @@ export class ProvisionAccountDto {
   @IsEnum(ExecutionModel)
   @IsOptional()
   executionModel?: ExecutionModel;
-
-  @ApiPropertyOptional({
-    description: 'Account type. Defaults to `CUSTOMER_ACCOUNT`.',
-    enum: AccountType,
-    example: 'CUSTOMER_ACCOUNT',
-    default: 'CUSTOMER_ACCOUNT',
-  })
-  @IsEnum(AccountType)
-  @IsOptional()
-  accountType?: AccountType;
-
-  @ApiPropertyOptional({
-    description:
-      'Purpose category for treasury buckets. Only valid when `accountType` is `TREASURY_BUCKET`.',
-    enum: BucketType,
-    example: 'PAYROLL',
-  })
-  @IsEnum(BucketType)
-  @IsOptional()
-  bucketType?: BucketType;
-
-  @ApiPropertyOptional({
-    description: 'Optional description for treasury bucket accounts.',
-    example: 'Q1 2026 payroll reserves',
-  })
-  @IsString()
-  @IsOptional()
-  description?: string;
 
   @ApiProperty({
     description: 'Rules to attach at provisioning time. At least one required.',

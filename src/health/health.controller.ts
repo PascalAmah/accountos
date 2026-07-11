@@ -2,12 +2,16 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { HealthService } from './health.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { appConfig } from '../config/config';
 
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
-  constructor(private readonly healthService: HealthService) {}
+  constructor(
+    private readonly healthService: HealthService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Public()
   @Get()
@@ -17,11 +21,14 @@ export class HealthController {
     db: 'connected' | 'error';
     redis: 'connected' | 'error';
     version: string;
+    queueDepth: { pending: number; failed: number };
     timestamp: string;
   }> {
-    const [db, redis] = await Promise.all([
+    const [db, redis, pending, failed] = await Promise.all([
       this.healthService.checkDb(),
       this.healthService.checkRedis(),
+      this.prisma.ruleExecution.count({ where: { status: 'PENDING' } }),
+      this.prisma.ruleExecution.count({ where: { status: 'FAILED' } }),
     ]);
 
     return {
@@ -29,6 +36,7 @@ export class HealthController {
       db,
       redis,
       version: appConfig.APP_VERSION,
+      queueDepth: { pending, failed },
       timestamp: new Date().toISOString(),
     };
   }

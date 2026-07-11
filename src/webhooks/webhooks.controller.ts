@@ -1,9 +1,10 @@
 import { Controller, Post, HttpCode, Req } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { WebhooksService } from './webhooks.service';
+import { appConfig } from '../config/config';
 
 @ApiTags('webhooks')
 @Controller('webhooks')
@@ -11,7 +12,14 @@ export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}
 
   @Public()
-  @SkipThrottle()
+  // Public/unauthenticated route — apply the dedicated (higher) webhook limit so
+  // a Nomba burst isn't rejected, while still bounding an unauthenticated flood.
+  @Throttle({
+    default: {
+      limit: appConfig.THROTTLE_WEBHOOK_LIMIT,
+      ttl: appConfig.THROTTLE_WEBHOOK_TTL,
+    },
+  })
   @Post('nomba')
   @HttpCode(200)
   @ApiOperation({

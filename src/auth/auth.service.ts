@@ -123,6 +123,15 @@ export class AuthService {
     };
   }
 
+  /**
+   * Decrypt a stored nombaWebhookSecret for HMAC verification of inbound
+   * Nomba webhooks. The secret is encrypted at rest (see encryptCredentials),
+   * so it MUST be decrypted before use — Nomba signs with the plaintext value.
+   */
+  decryptWebhookSecret(encrypted: string): string {
+    return decrypt(encrypted, this.encryptionKey);
+  }
+
   private assertAdminSecret(provided: string): void {
     if (!timingSafeCompare(provided, appConfig.ADMIN_SECRET)) {
       throw new UnauthorizedException({
