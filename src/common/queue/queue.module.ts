@@ -13,6 +13,8 @@ import { LedgerModule } from '../../ledger/ledger.module';
 import { AuditModule } from '../../audit/audit.module';
 import { RulesModule } from '../../rules/rules.module';
 import { NombaClientModule } from '../../nomba-client/nomba-client.module';
+import { AllocationModule } from '../../treasury/allocation.module';
+import { NotificationModule } from '../notifications/notification.module';
 
 @Global()
 @Module({
@@ -31,6 +33,8 @@ import { NombaClientModule } from '../../nomba-client/nomba-client.module';
     LedgerModule,
     AuditModule,
     NombaClientModule,
+    AllocationModule,
+    NotificationModule,
     forwardRef(() => RulesModule),
   ],
   providers: [WebhookProcessorService, RetryProcessorService],
