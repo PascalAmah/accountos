@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
 import { TreasuryController } from './treasury.controller';
 import { TreasuryService } from './treasury.service';
+import { SettlementService } from './settlement.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { NombaClientModule } from '../nomba-client/nomba-client.module';
-import { LedgerModule } from '../ledger/ledger.module';
+import { AllocationModule } from './allocation.module';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NombaClientModule, LedgerModule],
+  imports: [PrismaModule, AuditModule, NombaClientModule, AllocationModule],
   controllers: [TreasuryController],
-  providers: [TreasuryService],
-  exports: [TreasuryService],
+  providers: [TreasuryService, SettlementService],
+  exports: [TreasuryService, SettlementService],
 })
 export class TreasuryModule {}
