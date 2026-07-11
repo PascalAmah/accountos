@@ -7,17 +7,27 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AuditAction, Prisma } from '@prisma/client';
+import { AuditAction, Business, Prisma } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NombaClientService } from '../nomba-client/nomba-client.service';
-import { LedgerService } from '../ledger/ledger.service';
+import { AllocationService } from './allocation.service';
+import { SettlementService } from './settlement.service';
 import { ErrorCodes } from '../common/constants/error-codes';
 import { CreateBucketDto } from './dto/create-bucket.dto';
 import { RenameBucketDto } from './dto/rename-bucket.dto';
 import { WithdrawDto } from './dto/withdraw.dto';
+import { TransferBucketDto } from './dto/transfer-bucket.dto';
 
+/**
+ * TreasuryService — logical treasury buckets (see technical-docs/TREASURY_BUILD.md).
+ *
+ * Buckets are internal sub-ledgers, NOT Nomba DVAs. Money physically lives in the
+ * business's Nomba account. The only place this service touches Nomba is settlement
+ * (withdrawal) to an external bank. Provisioning, allocation, balance, statements,
+ * and bucket→bucket transfers are all pure database operations.
+ */
 @Injectable()
 export class TreasuryService {
   private readonly logger = new Logger(TreasuryService.name);
@@ -25,26 +35,22 @@ export class TreasuryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly nombaClient: NombaClientService,
-    private readonly ledgerService: LedgerService,
+    private readonly allocationService: AllocationService,
     private readonly auditService: AuditService,
+    private readonly settlementService: SettlementService,
   ) {}
 
   // ─── provisionBucket (POST /treasury-buckets) ──────────────────────────────
 
   /**
-   * Provision a new treasury bucket (Account with accountType: TREASURY_BUCKET).
-   *
-   * Flow:
-   * 1. Validate bucketRef uniqueness for the business
-   * 2. Validate bucketType is a valid enum value
-   * 3. Call NombaClientService.provisionDva (mock-safe)
-   * 4. Create Account record with accountType: TREASURY_BUCKET
-   * 5. Write TREASURY_BUCKET_CREATED AuditLogEntry
+   * Provision a new treasury bucket. Creates a TreasuryBucket row only — NO Nomba
+   * DVA is provisioned (buckets are logical). Optionally stores a default
+   * settlement destination.
    */
   async provisionBucket(dto: CreateBucketDto, businessId: string) {
-    // ── Step 1: Uniqueness check ────────────────────────────────────────────
-    const existing = await this.prisma.account.findUnique({
-      where: { accountRef: dto.bucketRef },
+    // Uniqueness is enforced per business by the @@unique([businessId, bucketRef]).
+    const existing = await this.prisma.treasuryBucket.findUnique({
+      where: { businessId_bucketRef: { businessId, bucketRef: dto.bucketRef } },
       select: { id: true },
     });
 
@@ -55,115 +61,65 @@ export class TreasuryService {
       });
     }
 
-    // ── Step 2: Validate bucketType (enum validation via class-validator) ────
-    // class-validator handles the enum check on the DTO; this is just a safety guard.
-    const validBucketTypes = [
-      'PAYROLL',
-      'TAX_RESERVE',
-      'OPERATIONS',
-      'MARKETING',
-      'SAVINGS',
-      'CUSTOM',
-    ];
-    if (!validBucketTypes.includes(dto.bucketType)) {
-      throw new BadRequestException({
-        message: `Invalid bucketType '${dto.bucketType}'. Must be one of: ${validBucketTypes.join(', ')}`,
-        code: ErrorCodes.VALIDATION_ERROR,
-      });
-    }
-
-    // ── Step 3: Resolve business ─────────────────────────────────────────────
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-
-    if (!business) {
-      throw new NotFoundException({
-        message: 'Business not found',
-        code: ErrorCodes.BUSINESS_NOT_FOUND,
-      });
-    }
-
-    // ── Step 4: Provision DVA at Nomba ───────────────────────────────────────
-    const nombaResult = await this.nombaClient.provisionDva(business, {
-      accountRef: dto.bucketRef,
-      accountName: dto.name,
-    });
-
-    // ── Step 5: Create Account record ────────────────────────────────────────
-    const account = await this.prisma.account.create({
+    const bucket = await this.prisma.treasuryBucket.create({
       data: {
-        accountRef: dto.bucketRef,
-        nombaAccountId: nombaResult.accountRef,
-        accountNumber: nombaResult.accountNumber,
-        bankName: nombaResult.bankName,
-        accountNameAtCreation: dto.name,
-        accountType: 'TREASURY_BUCKET',
+        bucketRef: dto.bucketRef,
+        name: dto.name,
         bucketType: dto.bucketType,
         description: dto.description ?? null,
-        customerId: null, // treasury buckets are not customer-owned
         businessId,
-        executionModel: 'SEQUENTIAL', // default; treasury buckets rarely use rules
+        settlementType: dto.settlementType ?? null,
+        settlementAccountName: dto.settlementAccountName ?? null,
+        settlementAccountNumber: dto.settlementAccountNumber ?? null,
+        settlementBankCode: dto.settlementBankCode ?? null,
       },
     });
 
-    // ── Step 6: Audit ────────────────────────────────────────────────────────
     await this.auditService.log({
       actor: 'system',
       action: AuditAction.TREASURY_BUCKET_CREATED,
-      accountId: account.id,
       businessId,
       afterState: {
-        accountRef: account.accountRef,
-        accountNumber: account.accountNumber,
-        bucketType: account.bucketType,
-        accountNameAtCreation: account.accountNameAtCreation,
-        description: account.description,
+        bucketRef: bucket.bucketRef,
+        bucketType: bucket.bucketType,
+        name: bucket.name,
+        description: bucket.description,
+        settlementType: bucket.settlementType,
       },
     });
 
     this.logger.log(
-      {
-        accountRef: account.accountRef,
-        bucketType: account.bucketType,
-      },
-      'Treasury bucket provisioned',
+      { bucketRef: bucket.bucketRef, bucketType: bucket.bucketType },
+      'Treasury bucket provisioned (logical — no Nomba DVA)',
     );
 
-    return account;
+    return { ...bucket, balanceKobo: 0n };
   }
 
   // ─── getBuckets (GET /treasury-buckets) ────────────────────────────────────
 
-  /**
-   * Paginated list of treasury buckets (accountType: TREASURY_BUCKET)
-   * scoped to the authenticated business.
-   */
   async getBuckets(
     businessId: string,
     filters: { page: number; limit: number; status?: string },
   ) {
-    const where: Prisma.AccountWhereInput = {
-      businessId,
-      accountType: 'TREASURY_BUCKET',
-    };
+    const where: Prisma.TreasuryBucketWhereInput = { businessId };
 
     if (filters.status) {
       where.status = filters.status as Prisma.EnumAccountStatusFilter['equals'];
     }
 
-    const [accounts, total] = await Promise.all([
-      this.prisma.account.findMany({
+    const [buckets, total] = await Promise.all([
+      this.prisma.treasuryBucket.findMany({
         where,
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.account.count({ where }),
+      this.prisma.treasuryBucket.count({ where }),
     ]);
 
     return {
-      data: accounts,
+      data: buckets,
       meta: {
         total,
         page: filters.page,
@@ -175,71 +131,37 @@ export class TreasuryService {
 
   // ─── getBucket (GET /treasury-buckets/:ref) ────────────────────────────────
 
-  /**
-   * Get a single treasury bucket with balance summary.
-   * 404 if not found or not belonging to the business.
-   */
   async getBucket(bucketRef: string, businessId: string) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        accountRef: bucketRef,
-        businessId,
-        accountType: 'TREASURY_BUCKET',
-      },
-    });
-
-    if (!account) {
-      throw new NotFoundException({
-        message: `Treasury bucket '${bucketRef}' not found`,
-        code: ErrorCodes.ACCOUNT_NOT_FOUND,
-      });
-    }
-
-    const balance = await this.ledgerService.getBalance(account.id);
-
+    const bucket = await this.resolveBucket(bucketRef, businessId);
+    const balance = await this.balanceOf(bucket.id);
+    const reserved = await this.prisma.$transaction((tx) =>
+      this.settlementService.reservedKobo(tx, bucket.id),
+    );
+    const available = balance - reserved;
     return {
-      ...account,
+      ...bucket,
       balanceKobo: balance,
+      availableKobo: available,
+      reservedKobo: reserved,
     };
   }
 
   // ─── renameBucket (PATCH /treasury-buckets/:ref) ──────────────────────────
 
-  /**
-   * Update the display name of a treasury bucket.
-   * Updates accountNameAtCreation to reflect the new name.
-   */
   async renameBucket(
     bucketRef: string,
     dto: RenameBucketDto,
     businessId: string,
   ) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        accountRef: bucketRef,
-        businessId,
-        accountType: 'TREASURY_BUCKET',
-      },
-    });
+    const bucket = await this.resolveBucket(bucketRef, businessId);
 
-    if (!account) {
-      throw new NotFoundException({
-        message: `Treasury bucket '${bucketRef}' not found`,
-        code: ErrorCodes.ACCOUNT_NOT_FOUND,
-      });
-    }
-
-    const updated = await this.prisma.account.update({
-      where: { id: account.id },
-      data: { accountNameAtCreation: dto.name },
+    const updated = await this.prisma.treasuryBucket.update({
+      where: { id: bucket.id },
+      data: { name: dto.name },
     });
 
     this.logger.log(
-      {
-        accountRef: bucketRef,
-        previousName: account.accountNameAtCreation,
-        newName: dto.name,
-      },
+      { bucketRef, previousName: bucket.name, newName: dto.name },
       'Treasury bucket renamed',
     );
 
@@ -249,91 +171,34 @@ export class TreasuryService {
   // ─── closeBucket (DELETE /treasury-buckets/:ref) ──────────────────────────
 
   /**
-   * Close a treasury bucket (EC-02 pattern).
-   *
-   * Steps:
-   * 1. Load the bucket (scoped to business + accountType filter)
-   * 2. Assert it is not already CLOSED or in a terminal state
-   * 3. Archive all PENDING/RETRYING RuleExecutions
-   * 4. Call Nomba to expire the DVA
-   * 5. Set status to CLOSED
-   * 6. Write TREASURY_BUCKET_CLOSED AuditLogEntry
+   * Close a treasury bucket. Buckets are logical, so there is no Nomba DVA to
+   * expire and no in-flight rule executions attached to a bucket. Closing simply
+   * marks the bucket CLOSED with an audit entry. A bucket with a non-zero balance
+   * cannot be closed — settle or transfer it out first.
    */
-  async closeBucket(
-    bucketRef: string,
-    businessId: string,
-    actor: string,
-    business: {
-      id: string;
-      nombaAccountId: string | null;
-      nombaSubAccountId: string | null;
-      nombaClientId: string | null;
-      nombaClientSecret: string | null;
-      nombaWebhookSecret: string | null;
-      webhookUrl: string | null;
-      name: string;
-      email: string;
-      createdAt: Date;
-      updatedAt: Date;
-    },
-  ) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        accountRef: bucketRef,
-        businessId,
-        accountType: 'TREASURY_BUCKET',
-      },
-    });
+  async closeBucket(bucketRef: string, businessId: string, actor: string) {
+    const bucket = await this.resolveBucket(bucketRef, businessId);
 
-    if (!account) {
-      throw new NotFoundException({
-        message: `Treasury bucket '${bucketRef}' not found`,
-        code: ErrorCodes.ACCOUNT_NOT_FOUND,
-      });
-    }
-
-    if (account.status === 'CLOSED') {
+    if (bucket.status === 'CLOSED') {
       throw new BadRequestException({
         message: 'Treasury bucket is already closed',
         code: ErrorCodes.ACCOUNT_ALREADY_CLOSED,
       });
     }
 
-    if (account.status === 'EXPIRED') {
+    const balance = await this.balanceOf(bucket.id);
+    const reserved = await this.prisma.$transaction((tx) =>
+      this.settlementService.reservedKobo(tx, bucket.id),
+    );
+    if (balance !== 0n || reserved !== 0n) {
       throw new BadRequestException({
-        message: `Treasury bucket is in terminal state '${account.status}' — cannot be closed`,
-        code: ErrorCodes.ACCOUNT_TERMINAL_STATE,
+        message: `Treasury bucket has a non-zero balance (${balance} kobo) or pending reservations (${reserved} kobo) — settle or transfer funds before closing`,
+        code: ErrorCodes.INSUFFICIENT_BUCKET_BALANCE,
       });
     }
 
-    // ── EC-02: Archive all PENDING and RETRYING RuleExecutions ────────────
-    const { count: archivedCount } = await this.prisma.ruleExecution.updateMany(
-      {
-        where: {
-          accountId: account.id,
-          status: { in: ['PENDING', 'RETRYING'] },
-        },
-        data: {
-          status: 'ARCHIVED',
-          archivedReason: 'CLOSED_BEFORE_COMPLETION',
-        },
-      },
-    );
-
-    this.logger.log(
-      { bucketRef, archivedCount },
-      'Archived pending/retrying rule executions on bucket close (EC-02)',
-    );
-
-    // Expire at Nomba
-    await this.nombaClient.expireAccount(business, account.nombaAccountId);
-
-    const beforeState = {
-      status: account.status,
-    };
-
-    const updated = await this.prisma.account.update({
-      where: { id: account.id },
+    const updated = await this.prisma.treasuryBucket.update({
+      where: { id: bucket.id },
       data: {
         status: 'CLOSED',
         closedAt: new Date(),
@@ -341,109 +206,71 @@ export class TreasuryService {
       },
     });
 
-    // Audit
     await this.auditService.log({
       actor,
       action: AuditAction.TREASURY_BUCKET_CLOSED,
-      accountId: account.id,
       businessId,
-      beforeState,
+      beforeState: { status: bucket.status },
       afterState: {
         status: 'CLOSED',
         closedAt: updated.closedAt?.toISOString(),
-        archivedExecutionCount: archivedCount,
       },
       reasonCode: 'BUCKET_CLOSED',
     });
 
-    this.logger.log({ bucketRef, archivedCount }, 'Treasury bucket closed');
-
+    this.logger.log({ bucketRef }, 'Treasury bucket closed');
     return updated;
   }
 
   // ─── getBalance (GET /treasury-buckets/:ref/balance) ──────────────────────
 
-  /**
-   * Get the current balance of a treasury bucket.
-   * Computed as SUM(INFLOW) - SUM(MATCHED OUTFLOW) — no Nomba API call.
-   */
   async getBalance(bucketRef: string, businessId: string) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        accountRef: bucketRef,
-        businessId,
-        accountType: 'TREASURY_BUCKET',
-      },
-      select: { id: true, accountRef: true },
-    });
-
-    if (!account) {
-      throw new NotFoundException({
-        message: `Treasury bucket '${bucketRef}' not found`,
-        code: ErrorCodes.ACCOUNT_NOT_FOUND,
-      });
-    }
-
-    const balance = await this.ledgerService.getBalance(account.id);
-
+    const bucket = await this.resolveBucket(bucketRef, businessId);
+    const balance = await this.balanceOf(bucket.id);
+    const reserved = await this.prisma.$transaction((tx) =>
+      this.settlementService.reservedKobo(tx, bucket.id),
+    );
     return {
-      accountRef: account.accountRef,
+      bucketRef: bucket.bucketRef,
       balanceKobo: balance,
+      availableKobo: balance - reserved,
+      reservedKobo: reserved,
     };
   }
 
   // ─── getStatement (GET /treasury-buckets/:ref/statement) ──────────────────
 
-  /**
-   * Get a paginated statement of ledger entries for a treasury bucket.
-   * Filters by optional from/to dates and direction.
-   */
   async getStatement(
     bucketRef: string,
     businessId: string,
     filters: {
       from?: string;
       to?: string;
-      direction?: string;
+      entryType?: string;
       cursor?: string;
       limit?: number;
     },
   ) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        accountRef: bucketRef,
-        businessId,
-        accountType: 'TREASURY_BUCKET',
-      },
-      select: { id: true },
-    });
+    const bucket = await this.resolveBucket(bucketRef, businessId);
 
-    if (!account) {
-      throw new NotFoundException({
-        message: `Treasury bucket '${bucketRef}' not found`,
-        code: ErrorCodes.ACCOUNT_NOT_FOUND,
-      });
-    }
-
-    // Build the query directly to support direction filter
-    const where: Prisma.LedgerEntryWhereInput = { accountId: account.id };
+    const where: Prisma.BucketLedgerEntryWhereInput = { bucketId: bucket.id };
 
     if (filters.from || filters.to) {
-      where.receivedAt = {};
-      if (filters.from) where.receivedAt.gte = new Date(filters.from);
-      if (filters.to) where.receivedAt.lte = new Date(filters.to);
+      where.createdAt = {};
+      if (filters.from) where.createdAt.gte = new Date(filters.from);
+      if (filters.to) where.createdAt.lte = new Date(filters.to);
     }
 
-    if (filters.direction) {
-      where.direction =
-        filters.direction as Prisma.EnumLedgerDirectionFilter['equals'];
+    if (filters.entryType) {
+      where.entryType =
+        filters.entryType as Prisma.EnumBucketEntryTypeFilter['equals'];
     }
 
-    const take = filters.limit ?? 50;
-    const entries = await this.prisma.ledgerEntry.findMany({
+    const take = Math.min(filters.limit ?? 50, 100);
+    const entries = await this.prisma.bucketLedgerEntry.findMany({
       where,
-      orderBy: { receivedAt: 'desc' },
-      take: Math.min(take, 100),
+      orderBy: { createdAt: 'desc' },
+      take,
       ...(filters.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
     });
 
@@ -454,85 +281,177 @@ export class TreasuryService {
     };
   }
 
+  // ─── transferBetweenBuckets (POST /treasury-buckets/:ref/transfer) ────────
+
+  /**
+   * Move value from one bucket to another as a pure internal ledger operation.
+   * Debits the source and credits the destination atomically. Never calls Nomba.
+   */
+  async transferBetweenBuckets(
+    sourceBucketRef: string,
+    dto: TransferBucketDto,
+    businessId: string,
+    actor: string,
+  ) {
+    if (dto.destinationBucketRef === sourceBucketRef) {
+      throw new BadRequestException({
+        message: 'Source and destination buckets must differ',
+        code: ErrorCodes.VALIDATION_ERROR,
+      });
+    }
+
+    const amountKobo = BigInt(dto.amountKobo);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const source = await this.lockBucket(tx, sourceBucketRef, businessId);
+      const destination = await this.lockBucket(
+        tx,
+        dto.destinationBucketRef,
+        businessId,
+      );
+
+      if (source.status !== 'ACTIVE') {
+        throw new BadRequestException({
+          message: `Source bucket is not active (status: ${source.status})`,
+          code: ErrorCodes.ACCOUNT_NOT_ACTIVE,
+        });
+      }
+      if (destination.status !== 'ACTIVE') {
+        throw new BadRequestException({
+          message: `Destination bucket is not active (status: ${destination.status})`,
+          code: ErrorCodes.ACCOUNT_NOT_ACTIVE,
+        });
+      }
+
+      const sourceBalance = await this.allocationService.computeBalance(
+        tx,
+        source.id,
+      );
+      if (sourceBalance < amountKobo) {
+        throw new UnprocessableEntityException({
+          message: `Insufficient bucket balance. Required: ${dto.amountKobo} kobo, Available: ${sourceBalance} kobo`,
+          code: ErrorCodes.INSUFFICIENT_BUCKET_BALANCE,
+        });
+      }
+
+      const ref = `xfer_${uuidv4()}`;
+      const destBalance = await this.allocationService.computeBalance(
+        tx,
+        destination.id,
+      );
+
+      await tx.bucketLedgerEntry.create({
+        data: {
+          bucketId: source.id,
+          entryType: 'DEBIT',
+          amountKobo,
+          cumulativeAmountKobo: sourceBalance - amountKobo,
+          reference: `${ref}_out`,
+          narration: dto.narration,
+        },
+      });
+
+      await tx.bucketLedgerEntry.create({
+        data: {
+          bucketId: destination.id,
+          entryType: 'CREDIT',
+          amountKobo,
+          cumulativeAmountKobo: destBalance + amountKobo,
+          reference: `${ref}_in`,
+          narration: dto.narration,
+        },
+      });
+
+      return {
+        ref,
+        sourceId: source.id,
+        destinationId: destination.id,
+        sourceBalance: sourceBalance - amountKobo,
+        destinationBalance: destBalance + amountKobo,
+      };
+    });
+
+    await this.auditService.log({
+      actor,
+      action: AuditAction.BUCKET_TRANSFER,
+      businessId,
+      metadata: {
+        reference: result.ref,
+        sourceBucketRef,
+        destinationBucketRef: dto.destinationBucketRef,
+        amountKobo: dto.amountKobo,
+      },
+    });
+
+    this.logger.log(
+      {
+        sourceBucketRef,
+        destinationBucketRef: dto.destinationBucketRef,
+        amountKobo: dto.amountKobo,
+      },
+      'Bucket-to-bucket transfer completed (internal)',
+    );
+
+    return {
+      reference: result.ref,
+      amountKobo: dto.amountKobo,
+      sourceBalanceKobo: result.sourceBalance,
+      destinationBalanceKobo: result.destinationBalance,
+      status: 'COMPLETED',
+    };
+  }
+
   // ─── withdraw (POST /treasury-buckets/:ref/withdraw) ──────────────────────
 
   /**
-   * Withdraw funds from a treasury bucket with balance-checked atomicity.
+   * Settle funds out of a treasury bucket to an EXTERNAL bank account.
    *
-   * Flow:
-   * 1. getBalance → if insufficient: 422 INSUFFICIENT_BUCKET_BALANCE (no DB write)
-   * 2. Write TREASURY_WITHDRAWAL_INITIATED AuditLogEntry BEFORE transaction
-   * 3. Prisma $transaction: write OUTFLOW LedgerEntry, call Nomba transferFunds
-   * 4. On Nomba success: update LedgerEntry reconciliationStatus = MATCHED,
-   *    write TREASURY_WITHDRAWAL_COMPLETED AuditLogEntry
-   * 5. On Nomba failure: rollback entire transaction,
-   *    write TREASURY_WITHDRAWAL_FAILED AuditLogEntry, re-throw
-   *
-   * All amounts stored as BigInt; never Decimal or Float.
+   * This is the only Nomba call in the treasury layer. Flow:
+   *   1. Resolve destination bank details (request body, else saved settlement).
+   *   2. Inside a serializable transaction, lock the bucket row (FOR UPDATE),
+   *      re-check the balance (EC-07), and write a DEBIT settlement entry.
+   *   3. Call Nomba bankTransfer (Naira). On success commit; on failure roll back
+   *      the DEBIT and surface the error.
    */
   async withdraw(
     bucketRef: string,
     dto: WithdrawDto,
     businessId: string,
-    business: {
-      id: string;
-      nombaAccountId: string | null;
-      nombaSubAccountId: string | null;
-      nombaClientId: string | null;
-      nombaClientSecret: string | null;
-      nombaWebhookSecret: string | null;
-      webhookUrl: string | null;
-      name: string;
-      email: string;
-      createdAt: Date;
-      updatedAt: Date;
-    },
+    business: Business,
   ) {
-    // ── Step 0: Resolve the bucket ──────────────────────────────────────────
-    const account = await this.prisma.account.findFirst({
-      where: {
-        accountRef: bucketRef,
-        businessId,
-        accountType: 'TREASURY_BUCKET',
-      },
-    });
+    const bucket = await this.resolveBucket(bucketRef, businessId);
 
-    if (!account) {
-      throw new NotFoundException({
-        message: `Treasury bucket '${bucketRef}' not found`,
-        code: ErrorCodes.ACCOUNT_NOT_FOUND,
-      });
-    }
-
-    if (account.status !== 'ACTIVE') {
+    if (bucket.status !== 'ACTIVE') {
       throw new BadRequestException({
-        message: `Treasury bucket is not active (current status: ${account.status})`,
+        message: `Treasury bucket is not active (current status: ${bucket.status})`,
         code: ErrorCodes.ACCOUNT_NOT_ACTIVE,
       });
     }
 
-    // ── Step 1: Balance check (EC-07) ───────────────────────────────────────
-    const balance = await this.ledgerService.getBalance(account.id);
-    const amountKobo = BigInt(dto.amountKobo);
+    // Resolve destination bank details: request body wins, else saved settlement.
+    const accountNumber =
+      dto.destinationAccountNumber ??
+      bucket.settlementAccountNumber ??
+      undefined;
+    const bankCode =
+      dto.destinationBankCode ?? bucket.settlementBankCode ?? undefined;
+    const accountName =
+      dto.destinationAccountName ?? bucket.settlementAccountName ?? undefined;
 
-    if (balance < amountKobo) {
-      throw new UnprocessableEntityException({
-        message: `Insufficient bucket balance. Required: ${dto.amountKobo} kobo, Available: ${balance} kobo`,
-        code: ErrorCodes.INSUFFICIENT_BUCKET_BALANCE,
-        metadata: {
-          requiredKobo: dto.amountKobo,
-          availableKobo: Number(balance),
-        },
+    if (!accountNumber || !bankCode || !accountName) {
+      throw new BadRequestException({
+        message:
+          'Destination bank details required — provide destinationAccountNumber, destinationBankCode, and destinationAccountName, or configure a BANK_ACCOUNT settlement destination on the bucket',
+        code: ErrorCodes.VALIDATION_ERROR,
       });
     }
 
+    const amountKobo = BigInt(dto.amountKobo);
     const transactionRef = `wdr_${uuidv4()}`;
 
-    // ── Step 2: Write TREASURY_WITHDRAWAL_INITIATED audit entry BEFORE txn ──
     await this.auditService.log({
       actor: 'system',
       action: AuditAction.TREASURY_WITHDRAWAL_INITIATED,
-      accountId: account.id,
       businessId,
       afterState: {
         amountKobo: dto.amountKobo,
@@ -542,58 +461,65 @@ export class TreasuryService {
       },
     });
 
-    // ── Step 3: Execute withdrawal inside a Prisma transaction ──────────────
     try {
-      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // Write OUTFLOW LedgerEntry
-        const ledgerEntry = await tx.ledgerEntry.create({
-          data: {
-            accountId: account.id,
-            nombaTransactionRef: transactionRef,
-            nombaEventId: transactionRef,
-            direction: 'OUTFLOW',
-            amountKobo,
-            currency: 'NGN',
+      await this.prisma.$transaction(
+        async (tx) => {
+          const locked = await this.lockBucket(tx, bucketRef, businessId);
+
+          const balance = await this.allocationService.computeBalance(
+            tx,
+            locked.id,
+          );
+          if (balance < amountKobo) {
+            throw new UnprocessableEntityException({
+              message: `Insufficient bucket balance. Required: ${dto.amountKobo} kobo, Available: ${balance} kobo`,
+              code: ErrorCodes.INSUFFICIENT_BUCKET_BALANCE,
+              metadata: {
+                requiredKobo: dto.amountKobo,
+                availableKobo: Number(balance),
+              },
+            });
+          }
+
+          // ADR #13: settle to the external bank FIRST. The per-bucket FOR UPDATE
+          // lock is still held, so no concurrent withdrawal can race the balance.
+          // The one Nomba call: settle to the external bank (amount in Naira).
+          await this.nombaClient.bankTransfer(business, {
+            amount: Number(amountKobo) / 100,
+            accountNumber,
+            accountName,
+            bankCode,
+            merchantTxRef: transactionRef,
             narration: dto.narration,
-            customerNameSnapshot: business.name,
-            kycTierAtTime: 'TIER_1',
-            cumulativeAmountKobo: 0n,
-            reconciliationStatus: 'PENDING',
-            receivedAt: new Date(),
-          },
-        });
+          });
 
-        // Call Nomba to transfer funds
-        await this.nombaClient.transferFunds(business, {
-          receiverAccountId: account.nombaAccountId,
-          merchantTxRef: transactionRef,
-          amount: Number(amountKobo),
-          narration: dto.narration,
-        });
+          // Only debit the bucket once Nomba has confirmed the transfer. If the
+          // call above threw, this never runs and the transaction rolls back —
+          // the bucket is never debited for a transfer that did not complete.
+          await tx.bucketLedgerEntry.create({
+            data: {
+              bucketId: locked.id,
+              entryType: 'DEBIT',
+              amountKobo,
+              cumulativeAmountKobo: balance - amountKobo,
+              reference: transactionRef,
+              narration: dto.narration,
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
 
-        // Update reconciliation status on success
-        await tx.ledgerEntry.update({
-          where: { id: ledgerEntry.id },
-          data: { reconciliationStatus: 'MATCHED' },
-        });
-      });
-
-      // ── Step 4: Nomba success path ────────────────────────────────────────
       await this.auditService.log({
         actor: 'system',
         action: AuditAction.TREASURY_WITHDRAWAL_COMPLETED,
-        accountId: account.id,
         businessId,
-        afterState: {
-          amountKobo: dto.amountKobo,
-          transactionRef,
-          bucketRef,
-        },
+        afterState: { amountKobo: dto.amountKobo, transactionRef, bucketRef },
       });
 
       this.logger.log(
         { bucketRef, amountKobo: dto.amountKobo, transactionRef },
-        'Treasury withdrawal completed',
+        'Treasury withdrawal settled to external bank',
       );
 
       return {
@@ -602,7 +528,11 @@ export class TreasuryService {
         status: 'COMPLETED',
       };
     } catch (error: unknown) {
-      // ── Step 5: Nomba failure path — transaction rolled back automatically ──
+      // EC-07: balance failure surfaces as 422 (no Nomba call, DEBIT rolled back)
+      if (error instanceof UnprocessableEntityException) {
+        throw error;
+      }
+
       const errorMessage =
         error instanceof HttpException
           ? error.message
@@ -618,11 +548,9 @@ export class TreasuryService {
         'Treasury withdrawal failed — transaction rolled back',
       );
 
-      // Write failure audit entry (outside the rolled-back transaction)
       await this.auditService.log({
         actor: 'system',
         action: AuditAction.TREASURY_WITHDRAWAL_FAILED,
-        accountId: account.id,
         businessId,
         afterState: {
           amountKobo: dto.amountKobo,
@@ -645,5 +573,56 @@ export class TreasuryService {
         502,
       );
     }
+  }
+
+  // ─── Internal helpers ─────────────────────────────────────────────────────
+
+  /** Resolve a bucket scoped to the business, or throw 404. */
+  private async resolveBucket(bucketRef: string, businessId: string) {
+    const bucket = await this.prisma.treasuryBucket.findUnique({
+      where: { businessId_bucketRef: { businessId, bucketRef } },
+    });
+
+    if (!bucket) {
+      throw new NotFoundException({
+        message: `Treasury bucket '${bucketRef}' not found`,
+        code: ErrorCodes.BUCKET_NOT_FOUND,
+      });
+    }
+
+    return bucket;
+  }
+
+  /**
+   * Lock a bucket row FOR UPDATE inside a transaction to serialize concurrent
+   * balance-mutating operations (withdrawal, transfer) and prevent overdraw.
+   */
+  private async lockBucket(
+    tx: Prisma.TransactionClient,
+    bucketRef: string,
+    businessId: string,
+  ): Promise<{ id: string; status: string }> {
+    const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT "id", "status"::text AS "status"
+      FROM "TreasuryBucket"
+      WHERE "bucketRef" = ${bucketRef} AND "businessId" = ${businessId}
+      FOR UPDATE
+    `;
+
+    if (rows.length === 0) {
+      throw new NotFoundException({
+        message: `Treasury bucket '${bucketRef}' not found`,
+        code: ErrorCodes.BUCKET_NOT_FOUND,
+      });
+    }
+
+    return rows[0];
+  }
+
+  /** Balance = SUM(CREDIT) - SUM(DEBIT). */
+  private async balanceOf(bucketId: string): Promise<bigint> {
+    return this.prisma.$transaction((tx) =>
+      this.allocationService.computeBalance(tx, bucketId),
+    );
   }
 }
