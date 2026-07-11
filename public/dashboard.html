@@ -2104,48 +2104,11 @@
             </select>
           </div>
           <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:12px;margin-top:2px">
-            <div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:8px;letter-spacing:0.05em;text-transform:uppercase">Rule (required — at least one)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-              <div>
-                <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Trigger</label>
-                <select id="pa-rule-trigger" onchange="paUpdateConditionHint()" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
-                  <option value="inflow_received">inflow_received</option>
-                  <option value="custom_event">custom_event</option>
-                  <option value="time_elapsed">time_elapsed</option>
-                  <option value="tier_changed">tier_changed</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Action</label>
-                <select id="pa-rule-action" onchange="paTogglePayload()" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
-                  <option value="suspend_account">suspend_account</option>
-                  <option value="notify_webhook">notify_webhook — needs webhook URL</option>
-                  <option value="release_funds">release_funds — needs destination + amount</option>
-                  <option value="flag_for_review">flag_for_review</option>
-                  <option value="reactivate_account">reactivate_account</option>
-                  <option value="expire_account">expire_account</option>
-                </select>
-              </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:500;color:var(--color-text-secondary);letter-spacing:0.05em;text-transform:uppercase">Rules (at least one)</div>
+              <button type="button" class="btn-secondary" onclick="paAddRule()" style="font-size:11px;padding:3px 10px"><i class="ti ti-plus"></i> Add rule</button>
             </div>
-            <div style="margin-bottom:8px">
-              <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Condition JSON <span id="pa-condition-hint" style="color:#6e7781"></span></label>
-              <textarea
-                id="pa-rule-condition"
-                rows="2"
-                placeholder='{"amount_gte": 5000000}'
-                style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical"
-              ></textarea>
-            </div>
-            <!-- Payload — only shown for notify_webhook and release_funds -->
-            <div id="pa-payload-wrap" style="display:none">
-              <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Payload JSON <span id="pa-payload-hint" style="color:#6e7781"></span></label>
-              <textarea
-                id="pa-rule-payload"
-                rows="2"
-                placeholder=''
-                style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical"
-              ></textarea>
-            </div>
+            <div id="pa-rules-list"></div>
           </div>
           <div
             id="pa-error"
@@ -3065,27 +3028,49 @@
       // Close modal on backdrop click
       document
         .getElementById('modal-backdrop')
-        .addEventListener('click', function (e) {
+        ?.addEventListener('click', function (e) {
           if (e.target === this) closeCreateCustomer();
         });
       document
         .getElementById('customer-detail-modal')
-        .addEventListener('click', function (e) {
+        ?.addEventListener('click', function (e) {
           if (e.target === this) this.style.display = 'none';
         });
       document
         .getElementById('provision-account-modal')
-        .addEventListener('click', function (e) {
+        ?.addEventListener('click', function (e) {
           if (e.target === this) closeProvisionAccount();
         });
-      document
-        .getElementById('manage-rules-modal')
-        .addEventListener('click', function (e) {
-          if (e.target === this) closeManageRules();
-        });
+      // NOTE: #manage-rules-modal lives AFTER this <script> in the DOM, so it does
+      // not exist yet at load time. Wire it on DOMContentLoaded (the `?.` above is a
+      // backstop). Previously the un-guarded call here threw and aborted the whole
+      // script, leaving every var below (demo data, screen titles) undefined.
+      window.addEventListener('DOMContentLoaded', function () {
+        document
+          .getElementById('manage-rules-modal')
+          ?.addEventListener('click', function (e) {
+            if (e.target === this) closeManageRules();
+          });
+      });
 
       /* ── Provision Account Modal ─────────────────────────────────────── */
-      function openProvisionAccount() {
+      let _paRuleSeq = 0;
+      let _paBuckets = []; // cached ACTIVE treasury buckets for release_funds picker
+
+      const PA_CONDITION_DEFAULTS = {
+        inflow_received: '{"amount_gte": 5000000}',
+        custom_event: '{"eventName": "delivery_confirmed"}',
+        time_elapsed: '{"no_inflow_for_days": 7}',
+        tier_changed: '{"toTier": "TIER_1"}',
+      };
+      const PA_CONDITION_HINTS = {
+        inflow_received: '— e.g. {"amount_gte": 5000000} (kobo)',
+        custom_event: '— e.g. {"eventName": "delivery_confirmed"}',
+        time_elapsed: '— e.g. {"no_inflow_for_days": 7}',
+        tier_changed: '— e.g. {"fromTier": "TIER_0", "toTier": "TIER_1"}',
+      };
+
+      async function openProvisionAccount() {
         if (!API_LIVE || !API_KEY) {
           alert('Connect the API first.');
           return;
@@ -3094,52 +3079,184 @@
         document.getElementById('pa-name').value = '';
         document.getElementById('pa-customer').value = '';
         document.getElementById('pa-exec-model').value = 'SEQUENTIAL';
-        document.getElementById('pa-rule-trigger').value = 'inflow_received';
-        document.getElementById('pa-rule-action').value = 'suspend_account';
-        document.getElementById('pa-rule-condition').value = '{"amount_gte": 5000000}';
-        document.getElementById('pa-rule-payload').value = '';
         document.getElementById('pa-error').style.display = 'none';
-        paUpdateConditionHint();
-        paTogglePayload();
+        // Fetch ACTIVE buckets so release_funds can offer a real picker.
+        try {
+          const res = await apiFetch('/treasury-buckets?limit=100&status=ACTIVE');
+          _paBuckets = res.data || [];
+        } catch {
+          _paBuckets = [];
+        }
+        // Reset the rules list to a single starter rule
+        document.getElementById('pa-rules-list').innerHTML = '';
+        _paRuleSeq = 0;
+        paAddRule();
         document.getElementById('provision-account-modal').style.display = 'flex';
       }
 
-      function paUpdateConditionHint() {
-        const trigger = document.getElementById('pa-rule-trigger').value;
-        const hints = {
-          inflow_received: '— e.g. {"amount_gte": 5000000} (kobo)',
-          custom_event: '— e.g. {"eventName": "delivery_confirmed"}',
-          time_elapsed: '— e.g. {"no_inflow_for_days": 7}',
-          tier_changed: '— e.g. {"fromTier": "TIER_0", "toTier": "TIER_1"}',
-        };
-        const defaults = {
-          inflow_received: '{"amount_gte": 5000000}',
-          custom_event: '{"eventName": "delivery_confirmed"}',
-          time_elapsed: '{"no_inflow_for_days": 7}',
-          tier_changed: '{"toTier": "TIER_1"}',
-        };
-        document.getElementById('pa-condition-hint').textContent = hints[trigger] || '';
-        document.getElementById('pa-rule-condition').value = defaults[trigger] || '';
+      /** Append a new rule row to the list. */
+      function paAddRule() {
+        const id = ++_paRuleSeq;
+        const list = document.getElementById('pa-rules-list');
+        const row = document.createElement('div');
+        row.className = 'pa-rule-row';
+        row.dataset.ruleId = id;
+        row.style.cssText =
+          'border:0.5px solid var(--color-border-secondary);border-radius:8px;padding:10px;margin-bottom:8px;position:relative';
+        row.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:10px;font-weight:500;color:var(--color-text-tertiary)">Rule <span class="pa-rule-num"></span></span>
+            <button type="button" class="pa-rule-remove" onclick="paRemoveRule(${id})" title="Remove rule" style="border:0;background:transparent;color:#a32d2d;cursor:pointer;font-size:14px;line-height:1"><i class="ti ti-trash"></i></button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Trigger</label>
+              <select class="pa-rule-trigger" onchange="paUpdateConditionHint(${id})" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
+                <option value="inflow_received">inflow_received</option>
+                <option value="custom_event">custom_event</option>
+                <option value="time_elapsed">time_elapsed</option>
+                <option value="tier_changed">tier_changed</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Action</label>
+              <select class="pa-rule-action" onchange="paTogglePayload(${id})" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none;background:var(--color-background-secondary)">
+                <option value="suspend_account">suspend_account</option>
+                <option value="notify_webhook">notify_webhook — needs webhook URL</option>
+                <option value="release_funds">release_funds — needs destination + amount</option>
+                <option value="flag_for_review">flag_for_review</option>
+                <option value="reactivate_account">reactivate_account</option>
+                <option value="expire_account">expire_account</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Condition JSON <span class="pa-condition-hint" style="color:#6e7781"></span></label>
+            <textarea class="pa-rule-condition" rows="2" style="width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:8px 10px;font-size:11px;font-family:var(--font-mono);outline:none;resize:vertical"></textarea>
+          </div>
+          <div class="pa-payload-wrap" style="display:none">
+            <label style="font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Payload <span class="pa-payload-hint" style="color:#6e7781"></span></label>
+            <div class="pa-payload-fields"></div>
+          </div>`;
+        list.appendChild(row);
+        paUpdateConditionHint(id);
+        paTogglePayload(id);
+        paRenumberRules();
       }
 
-      function paTogglePayload() {
-        const action = document.getElementById('pa-rule-action').value;
-        const wrap = document.getElementById('pa-payload-wrap');
-        const hint = document.getElementById('pa-payload-hint');
-        const ta = document.getElementById('pa-rule-payload');
+      /** Remove a rule row (never removes the last remaining row). */
+      function paRemoveRule(id) {
+        const list = document.getElementById('pa-rules-list');
+        if (list.querySelectorAll('.pa-rule-row').length <= 1) return;
+        const row = list.querySelector(`.pa-rule-row[data-rule-id="${id}"]`);
+        if (row) row.remove();
+        paRenumberRules();
+      }
+
+      /** Re-label rows 1..N and hide the remove button when only one remains. */
+      function paRenumberRules() {
+        const rows = document.querySelectorAll('#pa-rules-list .pa-rule-row');
+        rows.forEach((row, i) => {
+          row.querySelector('.pa-rule-num').textContent = i + 1;
+          const rm = row.querySelector('.pa-rule-remove');
+          rm.style.visibility = rows.length > 1 ? 'visible' : 'hidden';
+        });
+      }
+
+      function paRowEl(id) {
+        return document.querySelector(
+          `#pa-rules-list .pa-rule-row[data-rule-id="${id}"]`,
+        );
+      }
+
+      function paUpdateConditionHint(id) {
+        const row = paRowEl(id);
+        if (!row) return;
+        const trigger = row.querySelector('.pa-rule-trigger').value;
+        row.querySelector('.pa-condition-hint').textContent =
+          PA_CONDITION_HINTS[trigger] || '';
+        const ta = row.querySelector('.pa-rule-condition');
+        // Only overwrite when the field still holds a known default (don't clobber edits)
+        const cur = ta.value.trim();
+        const isDefault =
+          cur === '' || Object.values(PA_CONDITION_DEFAULTS).includes(cur);
+        if (isDefault) ta.value = PA_CONDITION_DEFAULTS[trigger] || '';
+      }
+
+      function paTogglePayload(id) {
+        const row = paRowEl(id);
+        if (!row) return;
+        const action = row.querySelector('.pa-rule-action').value;
+        const wrap = row.querySelector('.pa-payload-wrap');
+        const hint = row.querySelector('.pa-payload-hint');
+        const fields = row.querySelector('.pa-payload-fields');
+        const inputStyle =
+          'width:100%;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 8px;font-size:12px;font-family:var(--font-sans);outline:none';
+        const labelStyle =
+          'font-size:10px;color:var(--color-text-tertiary);display:block;margin-bottom:3px';
+
         if (action === 'notify_webhook') {
           wrap.style.display = 'block';
-          hint.textContent = '— required: {"url": "https://..."}';
-          ta.placeholder = '{"url": "https://yourbusiness.com/hooks/payment"}';
-          ta.value = ta.value || '{"url": "https://yourbusiness.com/hooks/payment"}';
+          hint.textContent = '— where to POST the notification';
+          // Only rebuild if switching INTO this action (preserve typed value)
+          if (!fields.querySelector('.pa-pl-url')) {
+            fields.innerHTML = `
+              <label style="${labelStyle}">Webhook URL</label>
+              <input class="pa-pl-url" type="url" placeholder="https://yourbusiness.com/hooks/payment" style="${inputStyle};font-family:var(--font-mono)" />`;
+          }
         } else if (action === 'release_funds') {
           wrap.style.display = 'block';
-          hint.textContent = '— required: destinationAccountRef + percentage or amountKobo';
-          ta.placeholder = '{"destinationAccountRef": "treasury-bucket", "percentage": 100}';
-          ta.value = ta.value || '{"destinationAccountRef": "treasury-bucket", "percentage": 100}';
+          hint.textContent = '— which bucket, and how much of the inflow';
+          if (!fields.querySelector('.pa-pl-dest')) {
+            const opts = _paBuckets.length
+              ? _paBuckets
+                  .map(
+                    (b) =>
+                      `<option value="${escHtml(b.bucketRef)}">${escHtml(b.bucketRef)} — ${escHtml(b.name || '')}</option>`,
+                  )
+                  .join('')
+              : '';
+            // <input list> gives a dropdown of existing buckets AND lets you type
+            // a ref that doesn't exist yet (rules may target a bucket made later).
+            const listId = `pa-buckets-${id}`;
+            fields.innerHTML = `
+              <datalist id="${listId}">${opts}</datalist>
+              <label style="${labelStyle}">Destination bucket</label>
+              <input class="pa-pl-dest" list="${listId}" placeholder="pick a bucket or type a bucketRef" style="${inputStyle};font-family:var(--font-mono);margin-bottom:8px" />
+              <div style="display:grid;grid-template-columns:120px 1fr;gap:8px">
+                <div>
+                  <label style="${labelStyle}">Amount type</label>
+                  <select class="pa-pl-mode" onchange="paUpdateAmountHint(${id})" style="${inputStyle};background:var(--color-background-secondary)">
+                    <option value="percentage">Percentage</option>
+                    <option value="amountKobo">Fixed (kobo)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="${labelStyle}">Value <span class="pa-pl-amount-hint" style="color:#6e7781"></span></label>
+                  <input class="pa-pl-amount" type="number" min="1" placeholder="70" style="${inputStyle};font-family:var(--font-mono)" />
+                </div>
+              </div>`;
+            paUpdateAmountHint(id);
+          }
         } else {
           wrap.style.display = 'none';
-          ta.value = '';
+          fields.innerHTML = '';
+        }
+      }
+
+      function paUpdateAmountHint(id) {
+        const row = paRowEl(id);
+        if (!row) return;
+        const mode = row.querySelector('.pa-pl-mode')?.value;
+        const el = row.querySelector('.pa-pl-amount-hint');
+        const input = row.querySelector('.pa-pl-amount');
+        if (!el || !input) return;
+        if (mode === 'percentage') {
+          el.textContent = '(1–100)';
+          input.placeholder = '70';
+        } else {
+          el.textContent = '(kobo — ₦1 = 100)';
+          input.placeholder = '5000000';
         }
       }
 
@@ -3152,11 +3269,6 @@
         const accountName = document.getElementById('pa-name').value.trim();
         const customerId = document.getElementById('pa-customer').value.trim();
         const executionModel = document.getElementById('pa-exec-model').value;
-        const trigger = document.getElementById('pa-rule-trigger').value;
-        // Strip the descriptive suffix from the action option value
-        const action = document.getElementById('pa-rule-action').value.split(' ')[0];
-        const conditionRaw = document.getElementById('pa-rule-condition').value.trim();
-        const payloadRaw = document.getElementById('pa-rule-payload').value.trim();
         const errEl = document.getElementById('pa-error');
         const btn = document.getElementById('pa-submit');
 
@@ -3181,50 +3293,80 @@
           return;
         }
 
-        let condition;
-        try {
-          condition = JSON.parse(conditionRaw || '{}');
-        } catch {
-          errEl.textContent = 'Condition must be valid JSON.';
+        // Collect every rule row into the rules[] array.
+        const ruleRows = Array.from(
+          document.querySelectorAll('#pa-rules-list .pa-rule-row'),
+        );
+        if (ruleRows.length === 0) {
+          errEl.textContent = 'At least one rule is required.';
           errEl.style.display = 'block';
           return;
         }
 
-        let payload;
-        if (payloadRaw) {
+        const rules = [];
+        for (let i = 0; i < ruleRows.length; i++) {
+          const row = ruleRows[i];
+          const trigger = row.querySelector('.pa-rule-trigger').value;
+          const action = row.querySelector('.pa-rule-action').value.split(' ')[0];
+          const conditionRaw = row.querySelector('.pa-rule-condition').value.trim();
+
+          let condition;
           try {
-            payload = JSON.parse(payloadRaw);
+            condition = JSON.parse(conditionRaw || '{}');
           } catch {
-            errEl.textContent = 'Payload must be valid JSON.';
+            errEl.textContent = `Rule ${i + 1}: condition must be valid JSON.`;
             errEl.style.display = 'block';
             return;
           }
-        }
 
-        // Validate payload required for certain actions
-        if (action === 'notify_webhook' && !payload?.url) {
-          errEl.textContent = 'notify_webhook requires a payload with "url".';
-          errEl.style.display = 'block';
-          return;
-        }
-        if (action === 'release_funds' && !payload?.destinationAccountRef) {
-          errEl.textContent = 'release_funds requires a payload with "destinationAccountRef".';
-          errEl.style.display = 'block';
-          return;
+          // Build payload from structured fields (no raw JSON).
+          let payload;
+          if (action === 'notify_webhook') {
+            const url = row.querySelector('.pa-pl-url')?.value.trim();
+            if (!url) {
+              errEl.textContent = `Rule ${i + 1}: notify_webhook requires a webhook URL.`;
+              errEl.style.display = 'block';
+              return;
+            }
+            payload = { url };
+          } else if (action === 'release_funds') {
+            const dest = row.querySelector('.pa-pl-dest')?.value.trim();
+            const mode = row.querySelector('.pa-pl-mode')?.value;
+            const rawVal = row.querySelector('.pa-pl-amount')?.value.trim();
+            if (!dest) {
+              errEl.textContent = `Rule ${i + 1}: release_funds requires a destination bucket.`;
+              errEl.style.display = 'block';
+              return;
+            }
+            const val = parseInt(rawVal, 10);
+            if (!rawVal || Number.isNaN(val) || val < 1) {
+              errEl.textContent = `Rule ${i + 1}: enter a valid ${mode === 'percentage' ? 'percentage' : 'kobo amount'}.`;
+              errEl.style.display = 'block';
+              return;
+            }
+            if (mode === 'percentage' && val > 100) {
+              errEl.textContent = `Rule ${i + 1}: percentage must be 1–100.`;
+              errEl.style.display = 'block';
+              return;
+            }
+            payload = { destinationAccountRef: dest };
+            payload[mode] = val;
+          }
+
+          const rule = { trigger, condition, action };
+          if (payload) rule.payload = payload;
+          rules.push(rule);
         }
 
         errEl.style.display = 'none';
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Provisioning…';
 
-        const rule = { trigger, condition, action };
-        if (payload) rule.payload = payload;
-
         const body = {
           accountRef,
           accountName,
           executionModel,
-          rules: [rule],
+          rules,
         };
         if (customerId) body.customerId = customerId;
 
@@ -4028,39 +4170,51 @@
           renderStepProgress(progressEl, 7, 2);
           contentEl.innerHTML = `<div style="font-size:12px;color:var(--color-text-secondary)">${AJO_SAVINGS_STEPS[1].desc}</div>`;
 
+          // Buckets the split rules target. Refs share the account's unique
+          // suffix so (a) each rule's destinationAccountRef matches the created
+          // bucket ref exactly, and (b) re-running the demo never collides on
+          // bucketRef (which is unique per business).
+          const runSuffix = accountRef.split('-').pop();
+          const bucketDefs = [
+            {
+              name: 'Primary Savings',
+              ref: 'ajo-primary-' + runSuffix,
+              bucketType: 'SAVINGS',
+              percentage: 70,
+              allocation: '70%',
+            },
+            {
+              name: 'Emergency Fund',
+              ref: 'ajo-emergency-' + runSuffix,
+              bucketType: 'SAVINGS',
+              percentage: 20,
+              allocation: '20%',
+            },
+            {
+              name: 'Management Fees',
+              ref: 'ajo-fees-' + runSuffix,
+              bucketType: 'CUSTOM',
+              percentage: 10,
+              allocation: '10%',
+            },
+          ];
+
           const ajoRules = {
             customerId,
             accountRef,
             accountName: customerName + ' — Ajo Savings',
-            rules: [
-              {
-                trigger: 'inflow_received',
-                condition: { amount_gte: 1000 },
-                action: 'release_funds',
-                payload: {
-                  destinationAccountRef: 'ajo-savings-primary',
-                  percentage: 70,
-                },
+            // PARALLEL so ALL three split rules fire on each inflow. SEQUENTIAL
+            // would stop after the first match and skip the 20% + 10% splits.
+            executionModel: 'PARALLEL',
+            rules: bucketDefs.map((b) => ({
+              trigger: 'inflow_received',
+              condition: { amount_gte: 1000 },
+              action: 'release_funds',
+              payload: {
+                destinationAccountRef: b.ref,
+                percentage: b.percentage,
               },
-              {
-                trigger: 'inflow_received',
-                condition: { amount_gte: 1000 },
-                action: 'release_funds',
-                payload: {
-                  destinationAccountRef: 'ajo-savings-emergency',
-                  percentage: 20,
-                },
-              },
-              {
-                trigger: 'inflow_received',
-                condition: { amount_gte: 1000 },
-                action: 'release_funds',
-                payload: {
-                  destinationAccountRef: 'ajo-savings-fees',
-                  percentage: 10,
-                },
-              },
-            ],
+            })),
           };
 
           if (DEMO_READY) {
@@ -4099,23 +4253,7 @@
           renderStepProgress(progressEl, 7, 3);
           contentEl.innerHTML = `<div style="font-size:12px;color:var(--color-text-secondary)">${AJO_SAVINGS_STEPS[2].desc}</div>`;
 
-          const buckets = [
-            {
-              name: 'Primary Savings',
-              ref: 'tb-primary-' + Date.now().toString(36).slice(-4),
-              allocation: '70%',
-            },
-            {
-              name: 'Emergency Fund',
-              ref: 'tb-emergency-' + Date.now().toString(36).slice(-4),
-              allocation: '20%',
-            },
-            {
-              name: 'Management Fees',
-              ref: 'tb-fees-' + Date.now().toString(36).slice(-4),
-              allocation: '10%',
-            },
-          ];
+          const buckets = bucketDefs;
 
           if (DEMO_READY) {
             bucketRefs = [];
@@ -4123,14 +4261,18 @@
               const r = await callApiStep(
                 '/treasury-buckets',
                 'POST',
-                { accountRef, name: bucket.name, ref: bucket.ref },
+                {
+                  bucketRef: bucket.ref,
+                  name: bucket.name,
+                  bucketType: bucket.bucketType,
+                },
                 3,
                 `Create Treasury Bucket: ${bucket.name}`,
               );
               if (!r.success) {
                 throw new Error(r.error.message);
               }
-              bucketRefs.push(r.data.ref || bucket.ref);
+              bucketRefs.push(r.data.bucketRef || bucket.ref);
               await sleep(200);
             }
           } else {
