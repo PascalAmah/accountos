@@ -77,7 +77,7 @@ export class RulesService {
       where: { id: account.customerId ?? '' },
       select: { kycTier: true },
     });
-    const kycTierAtCreation = customer?.kycTier ?? 'TIER_1';
+    const kycTierAtCreation = customer?.kycTier ?? 'TIER_0';
 
     // Step 5: Archive all current ACTIVE rules
     await this.prisma.rule.updateMany({

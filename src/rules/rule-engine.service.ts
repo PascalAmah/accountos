@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NombaClientService } from '../nomba-client/nomba-client.service';
 import { AuditService } from '../audit/audit.service';
+import { AllocationService } from '../treasury/allocation.service';
+import { NotificationService } from '../common/notifications/notification.service';
 import { Business } from '@prisma/client';
 
 /**
@@ -46,6 +48,8 @@ export class RuleEngineService {
     private readonly prisma: PrismaService,
     private readonly nombaClient: NombaClientService,
     private readonly auditService: AuditService,
+    private readonly allocationService: AllocationService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ─── Task 7.3: evaluate() ───────────────────────────────────────────────
@@ -201,12 +205,13 @@ export class RuleEngineService {
   /**
    * Execute the action for a single matched rule.
    *
-   * For RELEASE_FUNDS with percentage: compute transferAmount from the
-   * ledger entry's amountKobo. Resolve destinationAccountRef to nombaAccountId,
-   * call NombaClientService.transferFunds.
+   * - RELEASE_FUNDS: allocate to a treasury bucket (internal ledger write).
+   * - SUSPEND/EXPIRE/REACTIVATE_ACCOUNT: apply the account status transition.
+   * - FLAG_FOR_REVIEW: flag the triggering inflow for manual review.
+   * - NOTIFY_WEBHOOK: POST to the configured URL (RETRYING on failure).
    *
    * Returns an ExecutionResult. The caller is responsible for enqueuing
-   * retry jobs based on the result status.
+   * retry jobs when the status is RETRYING.
    */
   async execute(
     evaluatedRule: EvaluatedRule,
@@ -226,13 +231,19 @@ export class RuleEngineService {
       ledgerEntryId: ledgerEntry.id,
     };
 
+    // Custom events pass a pseudo ledger entry (id "custom_<eventId>") that is
+    // NOT a persisted LedgerEntry row — never use it as an FK.
+    const realLedgerEntryId = ledgerEntry.id.startsWith('custom_')
+      ? null
+      : ledgerEntry.id;
+
     // Create a RuleExecution record
     const execution = await this.prisma.ruleExecution.create({
       data: {
         ruleId: rule.id,
         accountId: account.id,
         triggeredBy: ledgerEntry.nombaEventId,
-        triggeredByLedgerEntryId: ledgerEntry.id,
+        triggeredByLedgerEntryId: realLedgerEntryId,
         status: 'PENDING',
       },
     });
@@ -250,22 +261,51 @@ export class RuleEngineService {
       }
 
       case 'SUSPEND_ACCOUNT':
-      case 'FLAG_FOR_REVIEW':
-      case 'NOTIFY_WEBHOOK':
-      case 'EXPIRE_ACCOUNT':
-      case 'REACTIVATE_ACCOUNT': {
-        // These are handled by other parts of the system or are no-ops
-        // during webhook processing (e.g. reactivate is cyclic reset).
-        await this.prisma.ruleExecution.update({
-          where: { id: execution.id },
-          data: { status: 'COMPLETED', completedAt: new Date() },
-        });
+        return this.handleStatusChange(
+          execution.id,
+          account,
+          'SUSPENDED',
+          ['ACTIVE'],
+          AuditAction.ACCOUNT_SUSPENDED,
+          logMeta,
+        );
 
-        return {
-          ruleExecutionId: execution.id,
-          status: 'COMPLETED',
-        };
-      }
+      case 'EXPIRE_ACCOUNT':
+        return this.handleStatusChange(
+          execution.id,
+          account,
+          'EXPIRED',
+          ['ACTIVE', 'SUSPENDED'],
+          AuditAction.ACCOUNT_EXPIRED,
+          logMeta,
+        );
+
+      case 'REACTIVATE_ACCOUNT':
+        return this.handleStatusChange(
+          execution.id,
+          account,
+          'ACTIVE',
+          ['SUSPENDED'],
+          AuditAction.ACCOUNT_REACTIVATED,
+          logMeta,
+        );
+
+      case 'FLAG_FOR_REVIEW':
+        return this.handleFlagForReview(
+          execution.id,
+          account,
+          realLedgerEntryId,
+          logMeta,
+        );
+
+      case 'NOTIFY_WEBHOOK':
+        return this.handleNotifyWebhook(
+          execution.id,
+          rule,
+          account,
+          ledgerEntry,
+          logMeta,
+        );
 
       default: {
         this.logger.warn(
@@ -285,23 +325,207 @@ export class RuleEngineService {
   }
 
   /**
+   * Apply an account status transition (SUSPEND / EXPIRE / REACTIVATE).
+   *
+   * The transition is only applied from an allowed source status; if the
+   * account is already in the target (or another) state it is treated as a
+   * completed no-op so a duplicate/late trigger never errors.
+   */
+  private async handleStatusChange(
+    executionId: string,
+    account: { id: string; accountRef: string; businessId: string },
+    target: 'SUSPENDED' | 'EXPIRED' | 'ACTIVE',
+    allowedFrom: Array<'ACTIVE' | 'SUSPENDED'>,
+    auditAction: AuditAction,
+    logMeta: Record<string, unknown>,
+  ): Promise<ExecutionResult> {
+    const current = await this.prisma.account.findUnique({
+      where: { id: account.id },
+      select: { status: true },
+    });
+
+    if (
+      current &&
+      allowedFrom.includes(current.status as 'ACTIVE' | 'SUSPENDED')
+    ) {
+      await this.prisma.account.update({
+        where: { id: account.id },
+        data: { status: target },
+      });
+
+      await this.auditService.log({
+        actor: 'system',
+        action: auditAction,
+        accountId: account.id,
+        businessId: account.businessId,
+        beforeState: { status: current.status },
+        afterState: { status: target },
+        reasonCode: 'RULE_ACTION',
+      });
+
+      this.logger.log(
+        { ...logMeta, from: current.status, to: target },
+        `Rule action applied: ${auditAction}`,
+      );
+    } else {
+      this.logger.log(
+        { ...logMeta, current: current?.status, target },
+        'Status-change rule is a no-op (account not in an allowed source state)',
+      );
+    }
+
+    await this.prisma.ruleExecution.update({
+      where: { id: executionId },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+
+    return { ruleExecutionId: executionId, status: 'COMPLETED' };
+  }
+
+  /**
+   * FLAG_FOR_REVIEW: mark the triggering inflow as FLAGGED (when it exists) and
+   * write an audit trail so a human can review it. No external call.
+   */
+  private async handleFlagForReview(
+    executionId: string,
+    account: { id: string; businessId: string },
+    ledgerEntryId: string | null,
+    logMeta: Record<string, unknown>,
+  ): Promise<ExecutionResult> {
+    if (ledgerEntryId) {
+      await this.prisma.ledgerEntry.update({
+        where: { id: ledgerEntryId },
+        data: { reconciliationStatus: 'FLAGGED' },
+      });
+    }
+
+    await this.auditService.log({
+      actor: 'system',
+      action: AuditAction.RULE_ACTION_COMPLETED,
+      accountId: account.id,
+      businessId: account.businessId,
+      reasonCode: 'FLAG_FOR_REVIEW',
+      metadata: { ruleExecutionId: executionId, ledgerEntryId },
+    });
+
+    await this.prisma.ruleExecution.update({
+      where: { id: executionId },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+
+    this.logger.log(logMeta, 'Rule action applied: FLAG_FOR_REVIEW');
+    return { ruleExecutionId: executionId, status: 'COMPLETED' };
+  }
+
+  /**
+   * NOTIFY_WEBHOOK: POST the event to the rule's configured URL. On failure,
+   * mark RETRYING so the caller enqueues a retry job (same path as RELEASE_FUNDS).
+   */
+  private async handleNotifyWebhook(
+    executionId: string,
+    rule: { payload: Prisma.JsonValue },
+    account: { id: string; accountRef: string; businessId: string },
+    ledgerEntry: { nombaTransactionRef: string; nombaEventId: string },
+    logMeta: Record<string, unknown>,
+  ): Promise<ExecutionResult> {
+    const payload = (rule.payload ?? {}) as Record<string, unknown>;
+    const url = payload.url as string | undefined;
+
+    if (!url) {
+      await this.markExecutionFailed(executionId, 'NOTIFY_WEBHOOK missing url');
+      return {
+        ruleExecutionId: executionId,
+        status: 'FAILED',
+        errorMessage: 'NOTIFY_WEBHOOK missing url',
+      };
+    }
+
+    const body = {
+      event: 'rule.notify_webhook',
+      accountRef: account.accountRef,
+      transactionRef: ledgerEntry.nombaTransactionRef,
+      eventId: ledgerEntry.nombaEventId,
+      ruleExecutionId: executionId,
+    };
+
+    const result = await this.notificationService.deliver(url, body);
+
+    if (result.ok) {
+      await this.prisma.ruleExecution.update({
+        where: { id: executionId },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          nombaApiResponse: {
+            delivered: true,
+            status: result.status,
+          },
+        },
+      });
+
+      await this.auditService.log({
+        actor: 'system',
+        action: AuditAction.RULE_ACTION_COMPLETED,
+        accountId: account.id,
+        businessId: account.businessId,
+        reasonCode: 'NOTIFY_WEBHOOK',
+        metadata: { ruleExecutionId: executionId, url, status: result.status },
+      });
+
+      this.logger.log({ ...logMeta, url }, 'NOTIFY_WEBHOOK delivered');
+      return { ruleExecutionId: executionId, status: 'COMPLETED' };
+    }
+
+    // Delivery failed — mark RETRYING; the caller enqueues the retry job.
+    await this.prisma.ruleExecution.update({
+      where: { id: executionId },
+      data: {
+        status: 'RETRYING',
+        attempt: 1,
+        errorMessage: result.error,
+        nextRetryAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    this.logger.warn(
+      { ...logMeta, url, error: result.error },
+      'NOTIFY_WEBHOOK delivery failed — marked RETRYING',
+    );
+    return {
+      ruleExecutionId: executionId,
+      status: 'RETRYING',
+      errorMessage: result.error,
+      attempt: 1,
+    };
+  }
+
+  /**
    * Handle RELEASE_FUNDS action.
    *
-   * - If payload contains percentage, compute transferAmount from ledger entry amount.
-   * - If payload contains amountKobo, use it directly.
-   * - Resolve destinationAccountRef to Nomba account ID (scoped to businessId).
-   * - Call NombaClientService.transferFunds.
+   * RELEASE_FUNDS allocates part of an inflow to a treasury bucket. Per
+   * TREASURY_BUILD.md this is a PURELY INTERNAL ledger operation — it never
+   * calls Nomba. The money already sits in the business's Nomba account; we
+   * only record logical ownership by crediting the destination bucket.
+   *
+   * - If payload contains percentage, compute the credit from the inflow amount.
+   * - If payload contains amountKobo, use it directly (kobo).
+   * - Resolve destinationAccountRef to a TreasuryBucket (scoped to businessId).
    */
   private async handleReleaseFunds(
     executionId: string,
     rule: { payload: Prisma.JsonValue },
-    account: { id: string; nombaAccountId: string; businessId: string },
+    account: {
+      id: string;
+      accountRef: string;
+      nombaAccountId: string;
+      businessId: string;
+    },
     ledgerEntry: {
       id: string;
       amountKobo: bigint;
       nombaTransactionRef: string;
     },
-    business: Business,
+    _business: Business,
     logMeta: Record<string, unknown>,
   ): Promise<ExecutionResult> {
     const payload = (rule.payload ?? {}) as Record<string, unknown>;
@@ -325,21 +549,21 @@ export class RuleEngineService {
       };
     }
 
-    // Resolve destination account (scoped to businessId)
-    const destinationAccount = await this.prisma.account.findFirst({
+    // Resolve destination treasury bucket (scoped to businessId)
+    const destinationBucket = await this.prisma.treasuryBucket.findFirst({
       where: {
-        accountRef: destinationAccountRef,
+        bucketRef: destinationAccountRef,
         businessId: account.businessId,
       },
-      select: { nombaAccountId: true },
+      select: { id: true, status: true },
     });
 
-    if (!destinationAccount) {
+    if (!destinationBucket) {
       this.logger.warn(
         { ...logMeta, destinationAccountRef },
-        'Destination account not found — marking FAILED',
+        'Destination treasury bucket not found — marking FAILED',
       );
-      const errorMsg = `Destination account '${destinationAccountRef}' not found`;
+      const errorMsg = `Destination treasury bucket '${destinationAccountRef}' not found`;
       await this.markExecutionFailed(executionId, errorMsg);
       return {
         ruleExecutionId: executionId,
@@ -348,14 +572,25 @@ export class RuleEngineService {
       };
     }
 
-    // Compute transfer amount
-    let transferAmountKobo: number;
+    if (destinationBucket.status !== 'ACTIVE') {
+      const errorMsg = `Destination treasury bucket '${destinationAccountRef}' is ${destinationBucket.status}`;
+      this.logger.warn({ ...logMeta, destinationAccountRef }, errorMsg);
+      await this.markExecutionFailed(executionId, errorMsg);
+      return {
+        ruleExecutionId: executionId,
+        status: 'FAILED',
+        errorMessage: errorMsg,
+      };
+    }
+
+    // Compute credit amount in kobo (BigInt — no Naira conversion; no money leaves Nomba)
+    let creditAmountKobo: bigint;
     if (percentage !== undefined) {
-      transferAmountKobo = Math.floor(
-        (percentage / 100) * Number(ledgerEntry.amountKobo),
-      );
+      creditAmountKobo =
+        (BigInt(Math.round(percentage * 100)) * ledgerEntry.amountKobo) /
+        10000n;
     } else if (amountKobo !== undefined) {
-      transferAmountKobo = amountKobo;
+      creditAmountKobo = BigInt(amountKobo);
     } else {
       this.logger.warn(
         logMeta,
@@ -370,19 +605,39 @@ export class RuleEngineService {
       };
     }
 
+    if (creditAmountKobo <= 0n) {
+      // Nothing to allocate (e.g. percentage of a zero-amount event) — complete as no-op.
+      await this.prisma.ruleExecution.update({
+        where: { id: executionId },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      return { ruleExecutionId: executionId, status: 'COMPLETED' };
+    }
+
     try {
-      const result = await this.nombaClient.transferFunds(business, {
-        amount: transferAmountKobo / 100,
-        receiverAccountId: destinationAccount.nombaAccountId,
-        merchantTxRef: `release_${ledgerEntry.nombaTransactionRef}`,
-        narration: `Rule release: ${ledgerEntry.nombaTransactionRef}`,
+      // Idempotency key: one allocation per (ledger entry, bucket).
+      const reference = `alloc_${ledgerEntry.nombaTransactionRef}_${destinationBucket.id.slice(0, 8)}`;
+
+      const cumulative = await this.allocationService.credit({
+        bucketId: destinationBucket.id,
+        businessId: account.businessId,
+        amountKobo: creditAmountKobo,
+        reference,
+        sourceLedgerEntryId: ledgerEntry.id,
+        narration: `RELEASE_FUNDS allocation from ${account.accountRef}`,
+        sourceAccountRef: account.accountRef,
       });
 
       await this.prisma.ruleExecution.update({
         where: { id: executionId },
         data: {
           status: 'COMPLETED',
-          nombaApiResponse: result as unknown as Prisma.InputJsonValue,
+          nombaApiResponse: {
+            allocated: true,
+            bucketRef: destinationAccountRef,
+            amountKobo: creditAmountKobo.toString(),
+            bucketBalanceKobo: cumulative.toString(),
+          },
           completedAt: new Date(),
         },
       });
@@ -394,9 +649,8 @@ export class RuleEngineService {
         businessId: account.businessId,
         metadata: {
           ruleExecutionId: executionId,
-          transactionRef: result.transactionRef,
-          amountNgn: result.amount,
-          fee: result.fee,
+          reference,
+          amountKobo: creditAmountKobo.toString(),
           destinationAccountRef,
         },
       });
@@ -404,23 +658,21 @@ export class RuleEngineService {
       this.logger.log(
         {
           ...logMeta,
-          transferAmountKobo,
-          transactionRef: result.transactionRef,
+          creditAmountKobo: creditAmountKobo.toString(),
+          destinationAccountRef,
         },
-        'RELEASE_FUNDS completed',
+        'RELEASE_FUNDS allocated to treasury bucket (internal)',
       );
 
       return {
         ruleExecutionId: executionId,
         status: 'COMPLETED',
-        nombaTransactionRef: result.transactionRef,
-        amountNgn: result.amount,
       };
     } catch (err: unknown) {
       const errorMessage =
-        err instanceof Error ? err.message : 'Unknown Nomba transfer error';
+        err instanceof Error ? err.message : 'Unknown allocation error';
 
-      // Mark as RETRYING — the caller will enqueue the retry job
+      // Internal allocation failure (e.g. transient DB error) — retryable.
       await this.prisma.ruleExecution.update({
         where: { id: executionId },
         data: {
@@ -433,7 +685,7 @@ export class RuleEngineService {
 
       this.logger.warn(
         { ...logMeta, errorMessage },
-        'RELEASE_FUNDS failed — marked RETRYING',
+        'RELEASE_FUNDS allocation failed — marked RETRYING',
       );
 
       return {
