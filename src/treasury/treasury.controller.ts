@@ -26,7 +26,6 @@ import { CreateBucketDto } from './dto/create-bucket.dto';
 import { RenameBucketDto } from './dto/rename-bucket.dto';
 import { WithdrawDto } from './dto/withdraw.dto';
 import { TransferBucketDto } from './dto/transfer-bucket.dto';
-import { CreateSettlementDto } from './dto/create-settlement.dto';
 
 @ApiTags('treasury')
 @ApiSecurity('api-key')
